@@ -34,6 +34,7 @@ cd digital-archiving-tools
 
 # Install dependencies
 pip install -r requirements.txt
+```
 
 🛠 Usage
 
