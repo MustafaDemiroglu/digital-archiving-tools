@@ -11,40 +11,13 @@ The tools in this repository are intended for archivists, librarians, and data m
 - **Metadata Handling** – Extracting and transforming metadata for archival records.
 - **Automation** – Scripts to speed up repetitive tasks in digital preservation workflows.
 - **Data Integrity** – Tools for verifying and validating archived files.
-
----
-
-## 📂 Repository Structure
-
-```plaintext
-digital-archiving-tools/
-│
-├── scripts/          # Command-line tools and helper scripts
-├── workflows/        # Automation workflows and batch processing templates
-├── docs/             # Documentation and usage guides
-├── examples/         # Example datasets and configuration files
-└── LICENCE
-└── README.md
-
-
-
-
-
-# Digital Archiving Tools
-
-A collection of scripts and utilities for **digital archiving**, **data preservation**, and **automation** tasks.  
-These tools are designed to help process, verify, and manage electronic records efficiently.
-
----
-
-## 📚 Features
-
 - **Checksum Generation** – Create and verify file checksums (MD5, SHA256, etc.).
 - **Batch File Processing** – Process multiple files or directories in one go.
 - **Metadata Extraction** – Read and export file metadata for archival purposes.
 - **Automation Workflows** – Speed up repetitive tasks in digital preservation.
-
+  
 ---
+
 
 ## 🚀 Getting Started
 
@@ -55,7 +28,7 @@ These tools are designed to help process, verify, and manage electronic records 
 ### Installation
 ```bash
 # Clone the repository
-git clone https://github.com/<your-username>/digital-archiving-tools.git
+git clone https://github.com/<MustafaDemiroglu>/digital-archiving-tools.git
 
 # Go to the project folder
 cd digital-archiving-tools
@@ -112,4 +85,22 @@ We welcome contributions!
 This project is licensed under the MIT License – see the LICENSE file for details.
 📧 Contact
 
-If you have questions or suggestions, please open an Issue in this repository or email me at: <your.email@example.com>
+If you have questions or suggestions, please open an Issue in this repository or email me at: <mustafa.demiroglu@gmx.de>
+
+## 📂 Repository Structure
+
+```plaintext
+digital-archiving-tools/
+│
+├── scripts/          # Command-line tools and helper scripts
+├── workflows/        # Automation workflows and batch processing templates
+├── docs/             # Documentation and usage guides
+├── examples/         # Example datasets and configuration files
+└── LICENCE
+└── README.md
+
+
+
+
+
+
