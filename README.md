@@ -15,9 +15,8 @@ The tools in this repository are intended for archivists, librarians, and data m
 - **Batch File Processing** – Process multiple files or directories in one go.
 - **Metadata Extraction** – Read and export file metadata for archival purposes.
 - **Automation Workflows** – Speed up repetitive tasks in digital preservation.
-  
----
 
+---
 
 ## 🚀 Getting Started
 
@@ -28,7 +27,7 @@ The tools in this repository are intended for archivists, librarians, and data m
 ### Installation
 ```bash
 # Clone the repository
-git clone https://github.com/<MustafaDemiroglu>/digital-archiving-tools.git
+git clone https://github.com/MustafaDemiroglu/digital-archiving-tools.git
 
 # Go to the project folder
 cd digital-archiving-tools
@@ -74,9 +73,13 @@ We welcome contributions!
 
     Fork the repository
 
-    Create a new branch: git checkout -b feature-name
+    Create a new branch:
 
-    Commit your changes: git commit -m 'Add new feature'
+git checkout -b feature-name
+
+Commit your changes:
+
+    git commit -m "Add new feature"
 
     Push to your branch and create a Pull Request
 
@@ -85,22 +88,14 @@ We welcome contributions!
 This project is licensed under the MIT License – see the LICENSE file for details.
 📧 Contact
 
-If you have questions or suggestions, please open an Issue in this repository or email me at: <mustafa.demiroglu@gmx.de>
+If you have questions or suggestions, please open an Issue in this repository or email me at: mustafa.demiroglu@gmx.de
+📂 Repository Structure
 
-## 📂 Repository Structure
-
-```plaintext
 digital-archiving-tools/
 │
 ├── scripts/          # Command-line tools and helper scripts
 ├── workflows/        # Automation workflows and batch processing templates
 ├── docs/             # Documentation and usage guides
 ├── examples/         # Example datasets and configuration files
-└── LICENCE
+├── LICENSE
 └── README.md
-
-
-
-
-
-
