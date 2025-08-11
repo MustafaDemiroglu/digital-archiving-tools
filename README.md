@@ -23,4 +23,5 @@ digital-archiving-tools/
 ├── workflows/        # Automation workflows and batch processing templates
 ├── docs/             # Documentation and usage guides
 ├── examples/         # Example datasets and configuration files
+└── LICENCE
 └── README.md
