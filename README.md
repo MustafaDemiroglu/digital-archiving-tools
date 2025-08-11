@@ -26,21 +26,38 @@ digital-archiving-tools/
 └── LICENCE
 └── README.md
 
-🚀 Getting Started
-Prerequisites
 
-    Python 3.9+ or other relevant runtime (depends on script)
 
-    Required packages listed in requirements.txt
 
-    Basic knowledge of command-line usage
 
-Installation
+# Digital Archiving Tools
 
+A collection of scripts and utilities for **digital archiving**, **data preservation**, and **automation** tasks.  
+These tools are designed to help process, verify, and manage electronic records efficiently.
+
+---
+
+## 📚 Features
+
+- **Checksum Generation** – Create and verify file checksums (MD5, SHA256, etc.).
+- **Batch File Processing** – Process multiple files or directories in one go.
+- **Metadata Extraction** – Read and export file metadata for archival purposes.
+- **Automation Workflows** – Speed up repetitive tasks in digital preservation.
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- **Python 3.9+** installed
+- Required packages listed in `requirements.txt`
+
+### Installation
+```bash
 # Clone the repository
-git clone https://github.com/<MustafaDemiroglu>/digital-archiving-tools.git
+git clone https://github.com/<your-username>/digital-archiving-tools.git
 
-# Navigate to the folder
+# Go to the project folder
 cd digital-archiving-tools
 
 # Install dependencies
@@ -48,21 +65,35 @@ pip install -r requirements.txt
 
 🛠 Usage
 
-Each script includes a --help option for quick guidance:
+All scripts can be run from the command line.
+Use the --help parameter to see available options.
+1. Generate Checksums
 
-python scripts/checksum_generator.py --help
-
-Example:
+Create checksums for all files in a folder:
 
 python scripts/checksum_generator.py ./data --algorithm sha256
 
+Verify existing checksums:
+
+python scripts/checksum_verifier.py ./data/checksums.sha256
+
+2. Batch Rename Files
+
+Rename files according to a pattern:
+
+python scripts/batch_rename.py ./data --pattern "archive_{index}.tif"
+
+3. Extract Metadata
+
+Extract and save file metadata to CSV:
+
+python scripts/metadata_extractor.py ./data --output metadata.csv
+
 📄 Documentation
 
-    Getting Started Guide
+    Detailed guides are available in the docs/ folder.
 
-    Script Reference
-
-    Workflow Examples
+    Example workflows can be found in the examples/ folder.
 
 🤝 Contributing
 
@@ -81,4 +112,4 @@ We welcome contributions!
 This project is licensed under the MIT License – see the LICENSE file for details.
 📧 Contact
 
-If you have any questions or suggestions, feel free to open an Issue or reach out via email: <mustafa.demiroglu@gmx.de>
+If you have questions or suggestions, please open an Issue in this repository or email me at: <your.email@example.com>
