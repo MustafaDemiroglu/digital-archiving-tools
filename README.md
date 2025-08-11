@@ -88,7 +88,8 @@ Commit your changes:
 ## 📜 License
 
 This project is licensed under the MIT License – see the LICENSE file for details.
-📧 Contact
+
+## 📧 Contact
 
 If you have questions or suggestions, please open an Issue in this repository or email me at: mustafa.demiroglu@gmx.de
 
