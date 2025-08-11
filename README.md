@@ -36,11 +36,11 @@ cd digital-archiving-tools
 pip install -r requirements.txt
 ```
 
-🛠 Usage
-
+## 🛠 Usage
+```bash
 All scripts can be run from the command line.
 Use the --help parameter to see available options.
-1. Generate Checksums
+# 1. Generate Checksums
 
 Create checksums for all files in a folder:
 
@@ -50,25 +50,26 @@ Verify existing checksums:
 
 python scripts/checksum_verifier.py ./data/checksums.sha256
 
-2. Batch Rename Files
+# 2. Batch Rename Files
 
 Rename files according to a pattern:
 
 python scripts/batch_rename.py ./data --pattern "archive_{index}.tif"
 
-3. Extract Metadata
+# 3. Extract Metadata
 
 Extract and save file metadata to CSV:
 
 python scripts/metadata_extractor.py ./data --output metadata.csv
+```
 
-📄 Documentation
+## 📄 Documentation
 
     Detailed guides are available in the docs/ folder.
 
     Example workflows can be found in the examples/ folder.
 
-🤝 Contributing
+## 🤝 Contributing
 
 We welcome contributions!
 
@@ -84,14 +85,15 @@ Commit your changes:
 
     Push to your branch and create a Pull Request
 
-📜 License
+## 📜 License
 
 This project is licensed under the MIT License – see the LICENSE file for details.
 📧 Contact
 
 If you have questions or suggestions, please open an Issue in this repository or email me at: mustafa.demiroglu@gmx.de
-📂 Repository Structure
 
+## 📂 Repository Structure
+```plain text
 digital-archiving-tools/
 │
 ├── scripts/          # Command-line tools and helper scripts
@@ -100,3 +102,4 @@ digital-archiving-tools/
 ├── examples/         # Example datasets and configuration files
 ├── LICENSE
 └── README.md
+```
