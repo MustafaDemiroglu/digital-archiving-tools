@@ -1,0 +1,24 @@
+name: Metadata Extraction
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  extract_metadata:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Extract metadata from files
+      run: |
+        echo "Listing files and their metadata:"
+        for file in ./archive/*; do
+          if [ -f "$file" ]; then
+            echo "File: $file"
+            stat "$file"   # Show file metadata like size, modify time
+          fi
+        done
