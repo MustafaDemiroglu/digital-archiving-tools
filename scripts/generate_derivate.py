@@ -225,11 +225,11 @@ if __name__ == "__main__":
     # Laden des Konfigurationsfiles                                                                       
     profiles = load_config_file()                                                                         
                                                                                                           
-    parser = argparse.ArgumentParser(description="Python3 Derivate Generierungsscript", epilog="Für genaue
-                                                                                               "Einstellun
-                                                                                               "Erklärunge
+    parser = argparse.ArgumentParser(description="Python3 Derivate Generierungsscript", epilog="Für genauere "
+                                                                                               "Einstellungen/ " 
+                                                                                               "Erklärungen siehe "
                                                                                                "/etc/hla" 
-                                                                                               "/generate_
+                                                                                               "/generate_derivate.yml")
     parser.add_argument("--profile", "-p", type=str, required=False, default="default")                   
     for key in profiles["default"]:                                                                       
         if type(profiles["default"][key]) is dict:                                                        
@@ -244,8 +244,8 @@ if __name__ == "__main__":
         print(f'{args.profile} not in {profiles.keys()}')                                                 
         parser.print_help()                                                                               
         sys.exit(2)                                                                                       
-    active_profile = overwrite_default_profile(profiles[args.profile], profiles['default']) \             
-        if args.profile != "default" \                                                                    
+    active_profile = overwrite_default_profile(profiles[args.profile], profiles['default']) \
+        if args.profile != "default" \
         else profiles['default']                                                                          
                                                                                                           
     for key in profiles["default"]:                                                                       
