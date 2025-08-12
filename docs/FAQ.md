@@ -20,4 +20,29 @@ Consider segmenting archives by project or date, and automate archiving in batch
 
 ---
 
-If you have more questions, feel free to contribute or ask in the project discussions.
+# FAQ - Digital Archiving Scripts
+
+**Q1: What should I do before running these scripts?**  
+Always back up your important data. Make sure you understand what the script does and test on a small dataset.
+
+**Q2: How do I prepare the input for `generate_multifileslist.sh`?**  
+Create a text file listing relative directory paths, one per line. This tells the script where to look for files.
+
+**Q3: What happens if I run `path_cleaner_and_formatter.sh`?**  
+It asks you to pick a CSV file in the current folder, then cleans up the paths inside it by removing prefixes, filenames, and duplicates.
+
+**Q4: Can `rename_part_in_names.sh` rename folders as well as files?**  
+Yes, it renames both files and directories recursively in the current folder.
+
+**Q5: What if something goes wrong during renaming?**  
+The script creates success and error logs so you can see which files were renamed and which had errors.
+
+**Q6: Can I modify these scripts?**  
+Yes, they are simple and meant to be customized for your own needs.
+
+**Q7: How often should I run these scripts?**  
+As often as your workflow requires. For example, run listing when you add new directories, cleaning before archiving, and renaming when fixing naming conventions.
+
+---
+
+If you have more questions or want to suggest improvements, please contribute to the project.
