@@ -47,8 +47,11 @@ fi
 echo "Searching for 'thumbs' folders in: $TARGET_DIR"
 echo "----------------------------------------------"
 
-# Step 4: Find all 'thumbs' directories
-MAPFILE -t THUMBS_DIRS < <(find "$TARGET_DIR" -type d -name "thumbs")
+# Step 4: Find all 'thumbs' directories (compatible version)
+THUMBS_DIRS=()
+while IFS= read -r dir; do
+    THUMBS_DIRS+=("$dir")
+done < <(find "$TARGET_DIR" -type d -name "thumbs")
 
 if [ ${#THUMBS_DIRS[@]} -eq 0 ]; then
     echo -e "${BLUE}No 'thumbs' folders found.${NC}"
