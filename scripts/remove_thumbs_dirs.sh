@@ -47,7 +47,7 @@ fi
 echo "Searching for 'thumbs' folders in: $TARGET_DIR"
 echo "----------------------------------------------"
 
-# Step 4: Find all 'thumbs' directories (compatible version)
+# Step 4: Find all 'thumbs' directories
 THUMBS_DIRS=()
 while IFS= read -r dir; do
     THUMBS_DIRS+=("$dir")
