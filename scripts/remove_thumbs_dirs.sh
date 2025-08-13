@@ -21,6 +21,12 @@
 #   This operation is permanent in delete mode. Deleted files cannot be recovered.
 ###############################################################################
 
+# Colors
+GREEN="\033[0;32m"
+RED="\033[0;31m"
+BLUE="\033[0;34m"
+NC="\033[0m" # No Color
+
 # Step 1: Check if dry-run mode is enabled
 DRY_RUN=false
 if [[ "$1" == "-n" || "$1" == "--dry-run" ]]; then
@@ -34,7 +40,7 @@ OUTPUT_FILE="$(pwd)/deleted_thumbs.list"
 
 # Step 3: Check if directory exists
 if [ ! -d "$TARGET_DIR" ]; then
-    echo "Error: Directory '$TARGET_DIR' does not exist."
+    echo -e "${RED}Error:${NC} Directory '$TARGET_DIR' does not exist."
     exit 1
 fi
 
@@ -45,7 +51,7 @@ echo "----------------------------------------------"
 MAPFILE -t THUMBS_DIRS < <(find "$TARGET_DIR" -type d -name "thumbs")
 
 if [ ${#THUMBS_DIRS[@]} -eq 0 ]; then
-    echo "No 'thumbs' folders found."
+    echo -e "${BLUE}No 'thumbs' folders found.${NC}"
     exit 0
 fi
 
@@ -57,14 +63,14 @@ done
 # Step 5: Dry-run mode check
 if $DRY_RUN; then
     echo "----------------------------------------------"
-    echo "Dry-run mode: No folders will be deleted."
+    echo -e "${BLUE}Dry-run mode: No folders will be deleted.${NC}"
     exit 0
 fi
 
 # Step 6: Ask for confirmation
 read -rp "Do you want to delete all these folders? (y/n): " CONFIRM
 if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
-    echo "Operation cancelled."
+    echo -e "${RED}Operation cancelled.${NC}"
     exit 0
 fi
 
@@ -76,12 +82,12 @@ for dir in "${THUMBS_DIRS[@]}"; do
     REL_PATH=$(realpath --relative-to="$(pwd)" "$dir")
     if rm -rf "$dir"; then
         echo "$REL_PATH" >> "$OUTPUT_FILE"
-        echo "Deleted: $REL_PATH"
+        echo -e "${GREEN}Deleted:${NC} $REL_PATH"
     else
-        echo "Failed to delete: $REL_PATH"
+        echo -e "${RED}Failed to delete:${NC} $REL_PATH"
     fi
 done
 
 echo "----------------------------------------------"
-echo "Process finished."
+echo -e "${GREEN}Process finished.${NC}"
 echo "Deleted folders list saved to: $OUTPUT_FILE"
