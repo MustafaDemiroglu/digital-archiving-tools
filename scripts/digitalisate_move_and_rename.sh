@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: digitalisate_move_and_rename.sh (Version 2.3)
+# Script Name: digitalisate_move_and_rename.sh (Version 2.4)
 #
 # Description:
 #   This script helps archivists move and rename TIFF files safely
@@ -15,7 +15,8 @@
 #       4) Rename files according to New_filenames column
 #       5) Ask user confirmation before operations
 #       6) Show colored output and progress
-#       7) Save detailed report
+#       7) Save detailed report with all terminal output
+#       8) Create CSV list of all renamed files
 #
 # Usage:
 #   ./digitalisate_move_and_rename.sh [-n] [-v] [base_path]
@@ -39,11 +40,23 @@ DRY_RUN=false
 VERBOSE=false
 BASE_PATH=""
 OUTPUT_FILE="$(basename "$0" .sh)_output_$(date +%Y%m%d_%H%M%S).list"
+RENAMED_CSV="renamed_files_$(date +%Y%m%d_%H%M%S).csv"
 LOG_ACTIONS=()
+TERMINAL_LOG=()
+RENAMED_FILES=()
 TOTAL_FILES=0
 PROCESSED_FILES=0
 
 # --- HELPER FUNCTIONS ---
+
+# Function to capture and display output
+output_and_log() {
+    local message="$1"
+    echo -e "$message"
+    # Store plain text version for log (remove color codes)
+    local plain_message=$(echo -e "$message" | sed 's/\x1B\[[0-9;]*[JKmsu]//g')
+    TERMINAL_LOG+=("$plain_message")
+}
 
 # Save action to log with timestamp
 log_action() {
@@ -52,30 +65,62 @@ log_action() {
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     LOG_ACTIONS+=("[$timestamp] [$status] $action")
     
-    if [ "$VERBOSE" = true ]; then
-        echo -e "${CYAN}LOG:${NC} $action"
+    # Always log to terminal log for detailed output file
+    TERMINAL_LOG+=("[$timestamp] [$status] $action")
+}
+
+# Add file rename entry to CSV tracking
+log_file_rename() {
+    local old_path="$1"
+    local new_path="$2"
+    
+    # Convert to relative paths (3 parent levels: grandparent/parent/file)
+    local old_rel=$(get_relative_path "$old_path")
+    local new_rel=$(get_relative_path "$new_path")
+    
+    RENAMED_FILES+=("$old_rel,$new_rel")
+}
+
+# Get relative path with 2 parent levels + filename
+get_relative_path() {
+    local full_path="$1"
+    local rel_path=$(realpath --relative-to="$BASE_PATH" "$full_path" 2>/dev/null || echo "$full_path")
+    
+    # Extract up to 3 path components (grandparent/parent/filename)
+    IFS='/' read -ra PATH_PARTS <<< "$rel_path"
+    local num_parts=${#PATH_PARTS[@]}
+    
+    if [ $num_parts -le 3 ]; then
+        echo "$rel_path"
+    else
+        # Take last 3 components
+        echo "${PATH_PARTS[$((num_parts-3))]}/${PATH_PARTS[$((num_parts-2))]}/${PATH_PARTS[$((num_parts-1))]}"
     fi
 }
 
 # Show error and exit
 error_exit() {
-    echo -e "${RED}ERROR:${NC} $1" >&2
+    local msg="${RED}ERROR:${NC} $1"
+    output_and_log "$msg"
     exit 1
 }
 
 # Show warning message
 warning() {
-    echo -e "${YELLOW}WARNING:${NC} $1"
+    local msg="${YELLOW}WARNING:${NC} $1"
+    output_and_log "$msg"
 }
 
 # Show success message
 success() {
-    echo -e "${GREEN}SUCCESS:${NC} $1"
+    local msg="${GREEN}SUCCESS:${NC} $1"
+    output_and_log "$msg"
 }
 
 # Show info message
 info() {
-    echo -e "${BLUE}INFO:${NC} $1"
+    local msg="${BLUE}INFO:${NC} $1"
+    output_and_log "$msg"
 }
 
 # Find the next available number in destination folder
@@ -140,15 +185,22 @@ show_progress() {
     local filled=$((percent / 2))
     local empty=$((50 - filled))
     
-    printf "\r${CYAN}Progress: [%*s%*s] %d%% (%d/%d)${NC}" \
-        $filled "" $empty "" $percent $current $total
+    local progress_msg=$(printf "\r${CYAN}Progress: [%*s%*s] %d%% (%d/%d)${NC}" \
+        $filled "" $empty "" $percent $current $total)
+    echo -ne "$progress_msg"
+    
+    # Add to terminal log without color codes
+    local plain_progress=$(printf "Progress: [%*s%*s] %d%% (%d/%d)" \
+        $filled "=" $empty " " $percent $current $total)
+    TERMINAL_LOG+=("$plain_progress")
 }
 
 # --- WELCOME MESSAGE ---
-echo -e "${BLUE}=== Digitalisate Move & Rename Script v2.0 ===${NC}"
-echo "This tool safely moves and renames digitized TIFF files."
-echo "Features: Conflict prevention, smart numbering, improved error handling"
-echo
+output_and_log "${BLUE}=== Digitalisate Move & Rename Script v2.4 ===${NC}"
+output_and_log "This tool safely moves and renames digitized TIFF files."
+output_and_log "Features: Conflict prevention, smart numbering, improved error handling"
+output_and_log "New: Complete terminal logging and file rename tracking"
+output_and_log ""
 
 # --- READ COMMAND LINE OPTIONS (SHORT & LONG) ---
 while [[ $# -gt 0 ]]; do
@@ -164,11 +216,11 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         -h|--hilfe|--help)
-            echo -e "${BLUE}Usage:${NC} $0 [-n|--dry-run] [-v|--verbose] [base_path]"
-            echo -e "Options:"
-            echo -e "  -n, --dry-run   Show actions without executing"
-            echo -e "  -v, --verbose   Show detailed output"
-            echo -e "  -h, --hilfe     Show this help message"
+            output_and_log "${BLUE}Usage:${NC} $0 [-n|--dry-run] [-v|--verbose] [base_path]"
+            output_and_log "Options:"
+            output_and_log "  -n, --dry-run   Show actions without executing"
+            output_and_log "  -v, --verbose   Show detailed output"
+            output_and_log "  -h, --hilfe     Show this help message"
             exit 0
             ;;
         *)
@@ -180,16 +232,18 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --- GET WORKING DIRECTORY ---
-if [ -z "$1" ]; then
+if [ -z "$BASE_PATH" ]; then
   info "No base directory specified."
-  read -p "Use current directory ($(pwd))? [y/n]: " choice
+  echo -ne "Use current directory ($(pwd))? [y/n]: "
+  read choice
+  TERMINAL_LOG+=("Use current directory ($(pwd))? [y/n]: $choice")
   if [[ "$choice" =~ ^[Yy]$ ]]; then
     BASE_PATH=$(pwd)
   else
-    read -p "Please enter base directory path: " BASE_PATH
+    echo -ne "Please enter base directory path: "
+    read BASE_PATH
+    TERMINAL_LOG+=("Please enter base directory path: $BASE_PATH")
   fi
-else
-  BASE_PATH="$1"
 fi
 
 # --- CHECK IF DIRECTORY EXISTS ---
@@ -205,13 +259,21 @@ if [ ${#FILES[@]} -eq 0 ]; then
   error_exit "No CSV/list/text files found in this directory: $BASE_PATH"
 fi
 
-echo "Available instruction files:"
-select FILE in "${FILES[@]}"; do
-  if [ -n "$FILE" ]; then
-    info "Selected file: $FILE"
-    break
-  fi
+output_and_log "Available instruction files:"
+for i in "${!FILES[@]}"; do
+    output_and_log "$((i+1))) ${FILES[$i]}"
 done
+
+echo -ne "Please select a file (1-${#FILES[@]}): "
+read file_choice
+TERMINAL_LOG+=("Please select a file (1-${#FILES[@]}): $file_choice")
+
+if [[ "$file_choice" =~ ^[0-9]+$ ]] && [ "$file_choice" -ge 1 ] && [ "$file_choice" -le ${#FILES[@]} ]; then
+    FILE="${FILES[$((file_choice-1))]}"
+    info "Selected file: $FILE"
+else
+    error_exit "Invalid selection: $file_choice"
+fi
 
 # --- CHECK IF FILE CAN BE READ ---
 if [ ! -r "$FILE" ]; then
@@ -222,8 +284,18 @@ fi
 TOTAL_ROWS=$(($(wc -l < "$FILE") - 1))
 info "Number of rows to process: $TOTAL_ROWS"
 
+# Initialize renamed files CSV
+{
+    if [ "$DRY_RUN" = true ]; then
+        echo "# DRY-RUN MODE: The following changes were not actually made."
+        echo "# This list shows what would happen if you run the script in real mode."
+        echo "#"
+    fi
+    echo "old_pfad_and_name,new_pfad_and_name"
+} > "$RENAMED_CSV"
+
 # --- START PROCESSING FILES ---
-echo "=" | tr '=' '-' | head -c 60; echo
+output_and_log "$(echo "=" | tr '=' '-' | head -c 60)"
 info "Starting file processing: $FILE"
 
 {
@@ -249,7 +321,7 @@ info "Starting file processing: $FILE"
     PROCESSED_FILES=$((PROCESSED_FILES + 1))
     show_progress $PROCESSED_FILES $TOTAL_ROWS
     
-    echo # New line
+    output_and_log "" # New line
     info "Processing [$PROCESSED_FILES/$TOTAL_ROWS]: $SRC → $DST"
     
     # --- CHECK SOURCE FOLDER ---
@@ -273,7 +345,7 @@ info "Starting file processing: $FILE"
 	if [ ! -d "$DST" ]; then
 		ACTION="Create destination directory: $DST"
 		if [ "$DRY_RUN" = true ]; then
-			echo -e "${BLUE}[DRY-RUN]${NC} $ACTION"
+			output_and_log "${BLUE}[DRY-RUN]${NC} $ACTION"
 		else
 			if mkdir -p "$DST"; then
 				success "Created: $DST"
@@ -323,11 +395,13 @@ info "Starting file processing: $FILE"
         ACTION="Move and rename: $(basename "$SOURCE_FILE") → $(basename "$TARGET_FILE")"
         
         if [ "$DRY_RUN" = true ]; then
-          echo -e "${BLUE}[DRY-RUN]${NC} $ACTION"
+          output_and_log "${BLUE}[DRY-RUN]${NC} $ACTION"
+          log_file_rename "$SOURCE_FILE" "$TARGET_FILE"
         else
           if mv "$SOURCE_FILE" "$TARGET_FILE"; then
             success "$(basename "$TARGET_FILE")"
             log_action "$ACTION"
+            log_file_rename "$SOURCE_FILE" "$TARGET_FILE"
           else
             warning "Failed: $ACTION"
             log_action "$ACTION" "FAILED"
@@ -350,11 +424,13 @@ info "Starting file processing: $FILE"
         ACTION="Move and rename: $(basename "$SOURCE_FILE") → $(basename "$TARGET_FILE")"
         
         if [ "$DRY_RUN" = true ]; then
-          echo -e "${BLUE}[DRY-RUN]${NC} $ACTION"
+          output_and_log "${BLUE}[DRY-RUN]${NC} $ACTION"
+          log_file_rename "$SOURCE_FILE" "$TARGET_FILE"
         else
           if mv "$SOURCE_FILE" "$TARGET_FILE"; then
             success "$(basename "$TARGET_FILE")"
             log_action "$ACTION"
+            log_file_rename "$SOURCE_FILE" "$TARGET_FILE"
           else
             warning "Failed: $ACTION"
             log_action "$ACTION" "FAILED"
@@ -376,11 +452,13 @@ info "Starting file processing: $FILE"
         ACTION="Move: $FILENAME → $(basename "$TARGET_FILE")"
         
         if [ "$DRY_RUN" = true ]; then
-          echo -e "${BLUE}[DRY-RUN]${NC} $ACTION"
+          output_and_log "${BLUE}[DRY-RUN]${NC} $ACTION"
+          log_file_rename "$SOURCE_FILE" "$TARGET_FILE"
         else
           if mv "$SOURCE_FILE" "$TARGET_FILE"; then
             success "$(basename "$TARGET_FILE")"
             log_action "$ACTION"
+            log_file_rename "$SOURCE_FILE" "$TARGET_FILE"
           else
             warning "Failed: $ACTION"
             log_action "$ACTION" "FAILED"
@@ -389,20 +467,22 @@ info "Starting file processing: $FILE"
       done
     fi
     
-    echo # Separator line
+    output_and_log "" # Separator line
     
   done
 } < "$FILE"
 
-echo
+output_and_log ""
 show_progress $TOTAL_ROWS $TOTAL_ROWS
-echo
-echo
+output_and_log ""
+output_and_log ""
 
 # --- CLEANUP SOURCE FOLDERS ---
 if [ "$DRY_RUN" = false ]; then
-  echo -e "${YELLOW}Source folder cleanup${NC}"
-  read -p "Delete empty source folders? [y/n]: " yn
+  output_and_log "${YELLOW}Source folder cleanup${NC}"
+  echo -ne "Delete empty source folders? [y/n]: "
+  read yn
+  TERMINAL_LOG+=("Delete empty source folders? [y/n]: $yn")
   if [[ "$yn" =~ ^[Yy]$ ]]; then
     {
       read # Skip header
@@ -431,7 +511,12 @@ if [ "$DRY_RUN" = false ]; then
   fi
 fi
 
-# --- SAVE REPORT ---
+# --- SAVE RENAMED FILES CSV ---
+for rename_entry in "${RENAMED_FILES[@]}"; do
+    echo "$rename_entry" >> "$RENAMED_CSV"
+done
+
+# --- SAVE DETAILED REPORT ---
 {
   echo "=== Digitalisate Move & Rename Script Report ==="
   echo "Execution time: $(date)"
@@ -441,11 +526,20 @@ fi
   echo "Verbose mode: $VERBOSE"
   echo "Total processed rows: $PROCESSED_FILES"
   echo
-  echo "=== Operation Details ==="
+  if [ "$DRY_RUN" = true ]; then
+    echo "=== DRY-RUN MODE - NO ACTUAL CHANGES WERE MADE ==="
+    echo "The following shows what would happen in real execution:"
+    echo
+  fi
+  echo "=== Complete Terminal Output ==="
+  printf "%s\n" "${TERMINAL_LOG[@]}"
+  echo
+  echo "=== Operation Summary ==="
   printf "%s\n" "${LOG_ACTIONS[@]}"
 } > "$OUTPUT_FILE"
 
-success "Report saved: $OUTPUT_FILE"
+success "Detailed report saved: $OUTPUT_FILE"
+success "File rename list saved: $RENAMED_CSV"
 success "All operations completed!"
 
 if [ "$DRY_RUN" = true ]; then
