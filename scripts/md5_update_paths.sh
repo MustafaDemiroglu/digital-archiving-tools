@@ -350,7 +350,6 @@ UPDATED_MD5_CONTENT="$MD5_CONTENT"
 NEXT_NUM=1
 
 {
-    read
     while IFS= read -r LINE; do
         LINE=$(echo "$LINE" | tr -d '\r')
         [ -z "$LINE" ] && continue
