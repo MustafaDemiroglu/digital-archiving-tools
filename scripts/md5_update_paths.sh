@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: md5_update_paths.sh (Version 1.0)
+# Script Name: md5_update_paths.sh (Version 1.1)
 #
 # Description:
 #   This script updates MD5 checksum files by changing file paths and names
@@ -237,7 +237,61 @@ cd "$BASE_PATH" || error_exit "Cannot change to directory: $BASE_PATH"
 info "Working directory: $(pwd)"
 
 # --- FIND MD5 FILES ---
-readarray -t MD5_FILES < <(find . -maxdepth 1 -type f \( -name "*.md5" -o -name "*checksum*" -o -name "*hash*" \) | sort)
+# Debug: Show current directory contents
+if [ "$VERBOSE" = true ]; then
+    output_and_log "${YELLOW}Debug: Current directory contents:${NC}"
+    ls -la
+    output_and_log ""
+fi
+
+# Look for MD5 files with various naming patterns
+readarray -t MD5_FILES < <(find . -maxdepth 1 -type f \( \
+    -name "*.md5" -o \
+    -name "*checksum*" -o \
+    -name "*hash*" -o \
+    -name "MD5-*" -o \
+    -name "*MD5*" -o \
+    -name "manifest*" -o \
+    -iname "*md5*" \
+\) 2>/dev/null | sort)
+
+# Alternative method using ls if find doesn't work
+if [ ${#MD5_FILES[@]} -eq 0 ]; then
+    output_and_log "${YELLOW}Using alternative search method...${NC}"
+    
+    # Use shell globbing instead of find
+    for pattern in "*.md5" "*checksum*" "*hash*" "MD5-*" "*MD5*" "manifest*"; do
+        for file in $pattern; do
+            if [ -f "$file" ]; then
+                MD5_FILES+=("$file")
+            fi
+        done
+    done
+    
+    # Remove duplicates and sort
+    readarray -t MD5_FILES < <(printf '%s\n' "${MD5_FILES[@]}" | sort -u)
+fi
+
+# If still no MD5 files found, check all files for MD5 format
+if [ ${#MD5_FILES[@]} -eq 0 ]; then
+    output_and_log "${YELLOW}No standard MD5 files found. Checking all files for MD5 format...${NC}"
+    
+    # Check all files for MD5 hash patterns
+    for file in *; do
+        [ -f "$file" ] || continue
+        
+        # Skip binary and very large files
+        if [ "$(wc -c < "$file" 2>/dev/null || echo 0)" -lt 10000000 ]; then
+            # Check if file contains MD5 hash patterns (32 hex chars followed by filename)
+            if head -3 "$file" 2>/dev/null | grep -q "^[a-f0-9]\{32\}[[:space:]]\+"; then
+                MD5_FILES+=("$file")
+                if [ "$VERBOSE" = true ]; then
+                    info "Found MD5 format in file: $file"
+                fi
+            fi
+        fi
+    done
+fi
 
 if [ ${#MD5_FILES[@]} -eq 0 ]; then
     error_exit "No MD5 checksum files found in this directory: $BASE_PATH"
