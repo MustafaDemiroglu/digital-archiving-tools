@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: md5_update_paths.sh (Version 1.2)
+# Script Name: md5_update_paths.sh (Version 1.5)
 #
 # Description:
 #   This script updates MD5 checksum files by changing file paths and names
@@ -350,6 +350,7 @@ UPDATED_MD5_CONTENT="$MD5_CONTENT"
 NEXT_NUM=1
 
 {
+	read
     while IFS= read -r LINE; do
         LINE=$(echo "$LINE" | tr -d '\r')
         [ -z "$LINE" ] && continue
@@ -362,16 +363,16 @@ NEXT_NUM=1
         show_progress $PROCESSED_CHANGES $TOTAL_ROWS
         output_and_log ""
         info "Processing [$PROCESSED_CHANGES/$TOTAL_ROWS]: $SRC → $DST"
-        local file_counter=1
-        local temp_content=""
+        file_counter=1
+        temp_content=""
         while IFS= read -r md5_line; do
             if [[ "$md5_line" =~ ^([a-f0-9]{32})[[:space:]]+(.+)$ ]]; then
-                local hash="${BASH_REMATCH[1]}"
-                local file_path="${BASH_REMATCH[2]}"
-                if [[ "$file_path" == "$SRC"* ]]; then
-                    local new_filename=$(build_new_filename "$file_path" "$DST" "$NEWNAME" "$UPDATED_MD5_CONTENT" "$file_counter")
-                    local new_path="${DST}/${new_filename}"
-                    local new_line="$hash  $new_path"
+                hash="${BASH_REMATCH[1]}"
+                file_path="${BASH_REMATCH[2]}"
+                if [[ "$file_path" == "$SRC/"* ]]; then
+                    new_filename=$(build_new_filename "$file_path" "$DST" "$NEWNAME" "$UPDATED_MD5_CONTENT" "$file_counter")
+                    new_path="${DST}/${new_filename}"
+                    new_line="$hash  $new_path"
                     if [ "$VERBOSE" = true ]; then
                         info "  Update: $(basename "$file_path") → $(basename "$new_path")"
                     fi
