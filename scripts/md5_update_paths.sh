@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: md5_update_paths.sh (Version 1.1)
+# Script Name: md5_update_paths.sh (Version 1.2)
 #
 # Description:
 #   This script updates MD5 checksum files by changing file paths and names
@@ -113,17 +113,13 @@ get_next_number() {
     
     local max_num=0
     
-    # Look for existing files with this prefix in the destination path
     while IFS= read -r line; do
         [[ "$line" =~ ^[a-f0-9]{32}[[:space:]]+(.+)$ ]] || continue
         local file_path="${BASH_REMATCH[1]}"
-        
-        # Check if this file is in our destination path and matches prefix
         if [[ "$file_path" == *"$dst_path"* ]] && [[ "$file_path" == *"${prefix}_nr_"* ]]; then
-            # Extract number from filename
             if [[ "$file_path" =~ _([0-9]{4})\.tif$ ]]; then
                 local num=${BASH_REMATCH[1]}
-                num=$((10#$num))  # Convert from octal to decimal
+                num=$((10#$num))
                 if [ "$num" -gt "$max_num" ]; then
                     max_num=$num
                 fi
@@ -145,13 +141,10 @@ build_new_filename() {
     local old_filename=$(basename "$old_path")
     
     if [ -n "$newname" ] && [ "$newname" = "rename" ]; then
-        # Sequential rename mode - build prefix from path
         IFS='/' read -ra DST_PARTS <<< "$dst_path"
         local L=${#DST_PARTS[@]}
-        
         local prefix=""
         local dst_folder=""
-        
         if [ $L -ge 2 ]; then
             prefix="${DST_PARTS[$L-2]}_${DST_PARTS[$L-1]}"
             dst_folder="${DST_PARTS[$L-1]}"
@@ -162,27 +155,26 @@ build_new_filename() {
             prefix="file"
             dst_folder="folder"
         fi
-        
-        # Get starting number for this destination
         if [ "$counter" -eq 1 ]; then
             NEXT_NUM=$(get_next_number "$md5_content" "$prefix" "$dst_path")
         fi
-        
         local pad=$(printf "%04d" $((NEXT_NUM + counter - 1)))
         echo "${prefix}_nr_${dst_folder}_${pad}.tif"
-        
     elif [ -n "$newname" ] && [ "$newname" != "rename" ]; then
-        # Single file rename mode
         echo "${newname}.tif"
-        
     else
-        # Keep original filename
         echo "$old_filename"
     fi
 }
 
+# Normalize path for cross-platform (Windows/Linux)
+normalize_path() {
+    local input="$1"
+    echo "${input//'\'/'/'}"
+}
+
 # --- WELCOME MESSAGE ---
-output_and_log "${BLUE}=== MD5 Checksum Path Update Script v1.0 ===${NC}"
+output_and_log "${BLUE}=== MD5 Checksum Path Update Script v1.2 ===${NC}"
 output_and_log "This tool updates file paths in MD5 checksum files without moving actual files."
 output_and_log "Features: Path updates, smart renaming, backup creation"
 output_and_log ""
@@ -230,6 +222,9 @@ if [ -z "$BASE_PATH" ]; then
     fi
 fi
 
+# Normalize base path for cross-platform
+BASE_PATH=$(normalize_path "$BASE_PATH")
+
 # --- CHECK IF DIRECTORY EXISTS ---
 [ ! -d "$BASE_PATH" ] && error_exit "Base directory '$BASE_PATH' not found."
 cd "$BASE_PATH" || error_exit "Cannot change to directory: $BASE_PATH"
@@ -237,14 +232,15 @@ cd "$BASE_PATH" || error_exit "Cannot change to directory: $BASE_PATH"
 info "Working directory: $(pwd)"
 
 # --- FIND MD5 FILES ---
-# Debug: Show current directory contents
+# Avoid "file not found" errors on Windows
+shopt -s nullglob
+
 if [ "$VERBOSE" = true ]; then
     output_and_log "${YELLOW}Debug: Current directory contents:${NC}"
     ls -la
     output_and_log ""
 fi
 
-# Look for MD5 files with various naming patterns
 readarray -t MD5_FILES < <(find . -maxdepth 1 -type f \( \
     -name "*.md5" -o \
     -name "*checksum*" -o \
@@ -255,11 +251,8 @@ readarray -t MD5_FILES < <(find . -maxdepth 1 -type f \( \
     -iname "*md5*" \
 \) 2>/dev/null | sort)
 
-# Alternative method using ls if find doesn't work
 if [ ${#MD5_FILES[@]} -eq 0 ]; then
     output_and_log "${YELLOW}Using alternative search method...${NC}"
-    
-    # Use shell globbing instead of find
     for pattern in "*.md5" "*checksum*" "*hash*" "MD5-*" "*MD5*" "manifest*"; do
         for file in $pattern; do
             if [ -f "$file" ]; then
@@ -267,22 +260,14 @@ if [ ${#MD5_FILES[@]} -eq 0 ]; then
             fi
         done
     done
-    
-    # Remove duplicates and sort
     readarray -t MD5_FILES < <(printf '%s\n' "${MD5_FILES[@]}" | sort -u)
 fi
 
-# If still no MD5 files found, check all files for MD5 format
 if [ ${#MD5_FILES[@]} -eq 0 ]; then
     output_and_log "${YELLOW}No standard MD5 files found. Checking all files for MD5 format...${NC}"
-    
-    # Check all files for MD5 hash patterns
     for file in *; do
         [ -f "$file" ] || continue
-        
-        # Skip binary and very large files
         if [ "$(wc -c < "$file" 2>/dev/null || echo 0)" -lt 10000000 ]; then
-            # Check if file contains MD5 hash patterns (32 hex chars followed by filename)
             if head -3 "$file" 2>/dev/null | grep -q "^[a-f0-9]\{32\}[[:space:]]\+"; then
                 MD5_FILES+=("$file")
                 if [ "$VERBOSE" = true ]; then
@@ -307,14 +292,16 @@ read md5_choice
 TERMINAL_LOG+=("Please select MD5 file (1-${#MD5_FILES[@]}): $md5_choice")
 
 if [[ "$md5_choice" =~ ^[0-9]+$ ]] && [ "$md5_choice" -ge 1 ] && [ "$md5_choice" -le ${#MD5_FILES[@]} ]; then
-    MD5_FILE="${MD5_FILES[$((md5_choice-1))]}"
+    MD5_FILE=$(normalize_path "${MD5_FILES[$((md5_choice-1))]}")
     info "Selected MD5 file: $MD5_FILE"
 else
     error_exit "Invalid selection: $md5_choice"
 fi
 
 # --- FIND CSV FILES ---
-readarray -t CSV_FILES < <(find . -maxdepth 1 -type f \( -name "*.csv" -o -name "*.list" -o -name "*.txt" \) | sort)
+readarray -t CSV_FILES < <(find . -maxdepth 1 -type f \
+   \( -iname "*.csv" -o -iname "*.list*" -o -iname "*.txt" \) \
+   2>/dev/null | sort)
 
 if [ ${#CSV_FILES[@]} -eq 0 ]; then
     error_exit "No CSV instruction files found in this directory: $BASE_PATH"
@@ -330,7 +317,7 @@ read csv_choice
 TERMINAL_LOG+=("Please select CSV file (1-${#CSV_FILES[@]}): $csv_choice")
 
 if [[ "$csv_choice" =~ ^[0-9]+$ ]] && [ "$csv_choice" -ge 1 ] && [ "$csv_choice" -le ${#CSV_FILES[@]} ]; then
-    CSV_FILE="${CSV_FILES[$((csv_choice-1))]}"
+    CSV_FILE=$(normalize_path "${CSV_FILES[$((csv_choice-1))]}")
     info "Selected CSV file: $CSV_FILE"
 else
     error_exit "Invalid selection: $csv_choice"
@@ -363,77 +350,49 @@ UPDATED_MD5_CONTENT="$MD5_CONTENT"
 NEXT_NUM=1
 
 {
-    # Skip CSV header
     read
     while IFS= read -r LINE; do
-        # Remove Windows CRLF characters
         LINE=$(echo "$LINE" | tr -d '\r')
-        
-        # Skip empty lines
         [ -z "$LINE" ] && continue
-        
-        # Parse CSV - supports comma, semicolon, tab
         IFS=$',;\t' read -r SRC DST NEWNAME <<< "$LINE"
-        
-        # Clean up values
         SRC=$(echo "$SRC" | xargs)
         DST=$(echo "$DST" | xargs)
         NEWNAME=$(echo "$NEWNAME" | xargs)
-        
         [ -z "$SRC" ] && continue
-        
         PROCESSED_CHANGES=$((PROCESSED_CHANGES + 1))
         show_progress $PROCESSED_CHANGES $TOTAL_ROWS
-        
         output_and_log ""
         info "Processing [$PROCESSED_CHANGES/$TOTAL_ROWS]: $SRC → $DST"
-        
-        # Find and update matching entries in MD5 file
         local file_counter=1
         local temp_content=""
-        
         while IFS= read -r md5_line; do
             if [[ "$md5_line" =~ ^([a-f0-9]{32})[[:space:]]+(.+)$ ]]; then
                 local hash="${BASH_REMATCH[1]}"
                 local file_path="${BASH_REMATCH[2]}"
-                
-                # Check if this file path starts with our source path
                 if [[ "$file_path" == "$SRC"* ]]; then
-                    # Build new filename
                     local new_filename=$(build_new_filename "$file_path" "$DST" "$NEWNAME" "$UPDATED_MD5_CONTENT" "$file_counter")
-                    
-                    # Replace source path with destination path and new filename
                     local new_path="${DST}/${new_filename}"
-                    
-                    # Create new MD5 line
                     local new_line="$hash  $new_path"
-                    
                     if [ "$VERBOSE" = true ]; then
                         info "  Update: $(basename "$file_path") → $(basename "$new_path")"
                     fi
-                    
                     log_action "Updated MD5 entry: $file_path → $new_path"
                     temp_content+="$new_line"$'\n'
                     file_counter=$((file_counter + 1))
                     TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
                 else
-                    # Keep original line
                     temp_content+="$md5_line"$'\n'
                 fi
             else
-                # Keep non-MD5 lines (comments, etc.)
                 temp_content+="$md5_line"$'\n'
             fi
         done <<< "$UPDATED_MD5_CONTENT"
-        
         UPDATED_MD5_CONTENT="$temp_content"
-        
         if [ "$file_counter" -gt 1 ]; then
             success "Updated $((file_counter - 1)) entries for path: $SRC"
         else
             warning "No matching entries found for path: $SRC"
         fi
-        
     done
 } < "$CSV_FILE"
 
@@ -446,8 +405,6 @@ output_and_log ""
 if [ "$TOTAL_CHANGES" -gt 0 ]; then
     if [ "$DRY_RUN" = true ]; then
         info "Dry-run mode: Would update $TOTAL_CHANGES entries in MD5 file"
-        
-        # Show preview of changes
         output_and_log "${YELLOW}Preview of updated MD5 file:${NC}"
         echo "$UPDATED_MD5_CONTENT" | head -10
         if [ "$(echo "$UPDATED_MD5_CONTENT" | wc -l)" -gt 10 ]; then
