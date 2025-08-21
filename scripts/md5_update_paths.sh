@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name : md5_update_paths.sh
-# Version     : 5.0
+# Version     : 5.5
 # Author      : Mustafa Demiroglu
 # Purpose     : Update file paths or filenames in MD5 checksum files without moving files.
 #               - Mode 1: Standard path update with optional rename rule
@@ -390,20 +390,7 @@ clean_old_files() {
     [ "$files_found" -eq 0 ] && info "No old files found"
 }
 
-# Main menu
-show_menu() {
-    output_and_log "${BLUE}=== MD5 Path Update Script v5.0 ===${NC}"
-    output_and_log "Select operation:"
-    output_and_log "1) Path update with rename (3-column CSV: Source_Pfad,Ziel_Pfad,New_filenames)"
-    output_and_log "2) Simple path/filename change (2-column CSV: old_full_path,new_full_path)"
-    output_and_log "3) Process ALL MD5 files in directory"
-    output_and_log "4) Clean old backup files"
-    output_and_log "5) Exit"
-    
-    echo -ne "Choice (1-5): "
-    read choice
-    echo "$choice"
-}
+
 
 # MAIN EXECUTION
 info "MD5 Checksum Path Update Script"
@@ -444,7 +431,19 @@ read subdir_choice
 OUTPUT_FILE="md5_update_output_$(date +%Y%m%d_%H%M%S).log"
 
 # Main menu loop
-choice=$(show_menu)
+output_and_log "${BLUE}=== MD5 Path Update Script v5.0 ===${NC}"
+output_and_log "Select operation:"
+output_and_log "1) Path update with rename (3-column CSV: Source_Pfad,Ziel_Pfad,New_filenames)"
+output_and_log "2) Simple path/filename change (2-column CSV: old_full_path,new_full_path)" 
+output_and_log "3) Process ALL MD5 files in directory"
+output_and_log "4) Clean old backup files"
+output_and_log "5) Exit"
+output_and_log ""
+
+echo -ne "Choice (1-5): "
+read choice
+TERMINAL_LOG+=("Choice (1-5): $choice")
+
 case "$choice" in
     1|2|3)
         # Find CSV files
