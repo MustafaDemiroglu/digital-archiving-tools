@@ -1,7 +1,26 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: md5_update_paths.sh (Version 3.4)
-# Description: Updates MD5 checksum files by changing file paths and names
+# Script Name : md5_update_paths.sh
+# Version     : 4.1
+# Author      : Mustafa Demiroglu
+# Purpose     : Update file paths or filenames in MD5 checksum files without moving files.
+#               - Mode 1: Standard path update with optional rename rule
+#                         CSV (3 cols): Source_Pfad,Ziel_Pfad,New_filenames
+#                         - If third col equals 'rename' (case-insensitive):
+#                           new filename base is built from Ziel_Pfad as:
+#                           "<first>_<second>_nr_<last>_<INDEX>.ext"
+#                           (INDEX: preserved from original filename, e.g. 0007)
+#               - Mode 2: Simple rename (two-column CSV: old_name,new_name)
+#                         Exact match on the path part in MD5 lines.
+#               - Mode 3: Process ALL .md5 files in directory (Modes 1 or 2)
+#               - Mode 4: Clean old backups and logs
+#
+# Notes:
+#   * MD5 file lines are expected as: "<hash><space><path/filename>"
+#   * Paths are updated only in the <path/filename> portion; hash stays intact.
+#   * No files are moved/renamed on disk — only MD5 entries are updated.
+#
+# Tested Shells: bash 4+ (Linux, Git Bash on Windows)
 ###############################################################################
 
 # Colors
@@ -557,16 +576,21 @@ show_main_menu() {
     output_and_log "${MAGENTA}=== MD5 Update Script - Main Menu ===${NC}"
     output_and_log "Please select an operation:"
     output_and_log ""
-    output_and_log "1) Standard path update (Source_Pfad,Ziel_Pfad,New_filenames)"
-    output_and_log "   - Changes directory paths and optionally renames files"
+    output_and_log "1) Standard path and/or filename update (Source_Pfad,Ziel_Pfad,New_filenames)"
+    output_and_log "   - Changes directory paths or filenames and optionally renames files"
     output_and_log "   - Use 'rename' in New_filenames to auto-generate new names"
+	output_and_log "   - Write in New_filenames for a single files new name"
     output_and_log ""
-    output_and_log "2) Simple full path rename (old_full_path,new_full_path)"
-    output_and_log "   - Direct path replacement, including path changes"
-    output_and_log "   - CSV format: full/path/old.tif,full/path/new.tif"
+    output_and_log "2) Change full path and filename (old_full_path_and_filename,new_full_path_and_filename)"
+    output_and_log "   - Direct path/filename.tif replacement, including path/filename changes"
+	output_and_log "   - Example: hashwert_abghs47864 aaa/bbb/ccc/aaa_bbb_nr_ccc_0001.tif 
+    output_and_log "   - CSV format: full/path/oldfilename.tif,full/path/newfilename.tif"
+	output_and_log "   - Example: hashwert_abghs47864 aaa/bbb/ccc/aaa_bbb_nr_ccc_0001.tif will be replaced as  
+	output_and_log "   - hashwert_abghs47864 xxx/yy/z/xxx_yyy_nr_z_0001.tif 
     output_and_log ""
-    output_and_log "3) Process ALL MD5 files in directory"
-    output_and_log "   - Apply same CSV operations to all found MD5 files"
+    output_and_log "3) Process ALL MD5 files in directory or subdirectories"
+    output_and_log "   - Process 1 or Process 2 can be choosed for multiple md5 files (all in same Dir)"
+    output_and_log "   - Apply same CS operations to all found MD5 files"
     output_and_log "   - You can choose processing type for all files"
     output_and_log ""
     output_and_log "4) Clean old backup and output files"
@@ -601,8 +625,9 @@ show_main_menu() {
 }
 
 # Main execution starts here
-output_and_log "${BLUE}=== MD5 Checksum Path Update Script v2.4 - FIXED ===${NC}"
-output_and_log "This tool updates file paths in MD5 checksum files without moving actual files."
+output_and_log "${BLUE}=== MD5 Checksum Path Update Script v4.1 ===${NC}"
+output_and_log "This tool updates file paths and/or filenames in MD5 checksum files without moving actual files."
+output_and_log "Have a nice day :-)"
 output_and_log ""
 
 # Read command line options
