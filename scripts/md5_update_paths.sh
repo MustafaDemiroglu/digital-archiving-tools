@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name : md5_update_paths.sh
-# Version     : 4.1
+# Version     : 5.0
 # Author      : Mustafa Demiroglu
 # Purpose     : Update file paths or filenames in MD5 checksum files without moving files.
 #               - Mode 1: Standard path update with optional rename rule
@@ -29,7 +29,6 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
-MAGENTA='\033[0;35m'
 NC='\033[0m'
 
 # Global variables
@@ -39,7 +38,6 @@ BASE_PATH=""
 SEARCH_SUBDIRS=false
 OUTPUT_FILE=""
 TERMINAL_LOG=()
-LOG_ACTIONS=()
 TOTAL_CHANGES=0
 PROCESSED_CHANGES=0
 TOTAL_ROWS=0
@@ -52,20 +50,9 @@ output_and_log() {
     TERMINAL_LOG+=("$plain_message")
 }
 
-log_action() {
-    local action="$1"
-    local status="${2:-SUCCESS}"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    LOG_ACTIONS+=("[$timestamp] [$status] $action")
-}
-
 error_exit() {
     output_and_log "${RED}ERROR:${NC} $1"
     exit 1
-}
-
-warning() {
-    output_and_log "${YELLOW}WARNING:${NC} $1"
 }
 
 success() {
@@ -74,6 +61,10 @@ success() {
 
 info() {
     output_and_log "${BLUE}INFO:${NC} $1"
+}
+
+warning() {
+    output_and_log "${YELLOW}WARNING:${NC} $1"
 }
 
 show_progress() {
@@ -87,123 +78,8 @@ show_progress() {
         $filled "=" $empty " " $percent $current $total
 }
 
-normalize_path() {
-    local input="$1"
-    input="${input//\\//}"
-    input="${input//\/\//\/}"
-    echo "$input"
-}
-
-find_csv_files() {
-    local search_path="$1"
-    local max_depth="$2"
-    
-    CSV_FILES=()
-    
-    if command -v find >/dev/null 2>&1; then
-        while IFS= read -r -d '' file; do
-            CSV_FILES+=("$file")
-        done < <(find "$search_path" -maxdepth "$max_depth" -type f \
-            \( -iname "*.csv" -o -iname "*.list" -o -iname "*list*.txt" \) \
-            -print0 2>/dev/null)
-    else
-        for ext in csv CSV list LIST txt TXT; do
-            for file in "$search_path"/*."$ext"; do
-                [ -f "$file" ] && CSV_FILES+=("$file")
-            done
-        done
-    fi
-}
-
-find_md5_files() {
-    local search_path="$1"
-    local max_depth="$2"
-    
-    MD5_FILES=()
-    
-    if command -v find >/dev/null 2>&1; then
-        while IFS= read -r -d '' file; do
-            MD5_FILES+=("$file")
-        done < <(find "$search_path" -maxdepth "$max_depth" -type f \
-            \( -name "*.md5" -o -name "*checksum*" -o -name "*hash*" -o \
-               -name "MD5-*" -o -name "*MD5*" -o -name "manifest*" -o \
-               -iname "*md5*" \) -print0 2>/dev/null)
-    else
-        for pattern in "*.md5" "*checksum*" "*hash*" "MD5-*" "*MD5*" "manifest*"; do
-            for file in "$search_path"/$pattern; do
-                [ -f "$file" ] && MD5_FILES+=("$file")
-            done
-        done
-    fi
-    
-    if [ ${#MD5_FILES[@]} -eq 0 ]; then
-        info "No standard MD5 files found. Checking all files for MD5 format..."
-        for file in "$search_path"/*; do
-            [ -f "$file" ] || continue
-            if [ "$(wc -c < "$file" 2>/dev/null || echo 0)" -lt 10000000 ]; then
-                if head -3 "$file" 2>/dev/null | grep -q "^[a-f0-9]\{32\}[[:space:]]\+"; then
-                    MD5_FILES+=("$file")
-                    [ "$VERBOSE" = true ] && info "Found MD5 format in file: $file"
-                fi
-            fi
-        done
-    fi
-}
-
-clean_old_files() {
-    local search_path="$1"
-    local max_depth="$2"
-    local files_found=0
-    
-    info "Searching for old backup and output files..."
-    
-    if command -v find >/dev/null 2>&1; then
-        while IFS= read -r -d '' file; do
-            if [ -f "$file" ]; then
-                info "Found backup file: $file"
-                if [ "$DRY_RUN" = false ]; then
-                    rm "$file" && success "Deleted: $file" || warning "Could not delete: $file"
-                else
-                    info "Would delete: $file"
-                fi
-                files_found=$((files_found + 1))
-            fi
-        done < <(find "$search_path" -maxdepth "$max_depth" -name "*.backup.*" -print0 2>/dev/null)
-        
-        while IFS= read -r -d '' file; do
-            if [ -f "$file" ]; then
-                info "Found output file: $file"
-                if [ "$DRY_RUN" = false ]; then
-                    rm "$file" && success "Deleted: $file" || warning "Could not delete: $file"
-                else
-                    info "Would delete: $file"
-                fi
-                files_found=$((files_found + 1))
-            fi
-        done < <(find "$search_path" -maxdepth "$max_depth" -name "md5_update_paths_output_*" -print0 2>/dev/null)
-    else
-        for file in "$search_path"/*.backup.* "$search_path"/md5_update_paths_output_*; do
-            if [ -f "$file" ]; then
-                info "Found old file: $file"
-                if [ "$DRY_RUN" = false ]; then
-                    rm "$file" && success "Deleted: $file" || warning "Could not delete: $file"
-                else
-                    info "Would delete: $file"
-                fi
-                files_found=$((files_found + 1))
-            fi
-        done
-    fi
-    
-    if [ "$files_found" -eq 0 ]; then
-        info "No old backup or output files found."
-    else
-        success "Found and processed $files_found old files."
-    fi
-}
-
-# Extract original number from filename - FIXED
-extract_original_number() {
+# Extract 4-digit number from filename (fixed)
+extract_number() {
     local filename="$1"
     if [[ "$filename" =~ _([0-9]{4})\.tif$ ]]; then
         echo "${BASH_REMATCH[1]}"
@@ -212,74 +88,139 @@ extract_original_number() {
     fi
 }
 
-# Build new filename - FIXED to preserve original numbering
+# Build new filename based on rules (fixed)
 build_new_filename() {
-    local old_path="$1" 
-    local dst_path="$2"
+    local old_path="$1"
+    local dst_path="$2" 
     local newname="$3"
     
     local old_filename=$(basename "$old_path")
+    local original_number=$(extract_number "$old_filename")
     
-    if [ -n "$newname" ] && [ "$newname" = "rename" ]; then
-        # Extract the original number from old filename 
-        local original_number=$(extract_original_number "$old_filename")
+    if [ -n "$newname" ] && [ "$(echo "$newname" | tr '[:upper:]' '[:lower:]')" = "rename" ]; then
+        # Auto-generate name from destination path segments
+        IFS='/' read -ra SEGMENTS <<< "$dst_path"
+        local len=${#SEGMENTS[@]}
         
-        # Build prefix from destination path
-        IFS='/' read -ra DST_PARTS <<< "$dst_path"
-        local L=${#DST_PARTS[@]}
-        local prefix=""
-        local dst_folder=""
-        
-        if [ $L -ge 2 ]; then
-            prefix="${DST_PARTS[$L-2]}_${DST_PARTS[$L-1]}"
-            dst_folder="${DST_PARTS[$L-1]}"
-        elif [ $L -ge 1 ]; then
-            prefix="${DST_PARTS[$L-1]}"
-            dst_folder="${DST_PARTS[$L-1]}"
+        if [ $len -ge 3 ]; then
+            # Use last 3 segments: first_second_nr_third_INDEX.tif
+            local first="${SEGMENTS[$((len-3))]}"
+            local second="${SEGMENTS[$((len-2))]}"  
+            local third="${SEGMENTS[$((len-1))]}"
+            echo "${first}_${second}_nr_${third}_${original_number}.tif"
+        elif [ $len -ge 2 ]; then
+            # Use last 2 segments: first_nr_second_INDEX.tif
+            local first="${SEGMENTS[$((len-2))]}"
+            local second="${SEGMENTS[$((len-1))]}"
+            echo "${first}_nr_${second}_${original_number}.tif"
         else
-            prefix="file"
-            dst_folder="folder"
+            # Single segment: segment_INDEX.tif
+            local segment="${SEGMENTS[$((len-1))]}"
+            echo "${segment}_${original_number}.tif"
         fi
-        
-        # Use original number
-        echo "${prefix}_nr_${dst_folder}_${original_number}.tif"
-    elif [ -n "$newname" ] && [ "$newname" != "rename" ]; then
+    elif [ -n "$newname" ] && [ "$(echo "$newname" | tr '[:upper:]' '[:lower:]')" != "rename" ]; then
+        # User provided custom name
         echo "${newname}.tif"
     else
+        # Keep original filename
         echo "$old_filename"
     fi
 }
 
-# Process simple rename CSV (old_full_path,new_full_path) - FIXED
-process_renamed_files_csv() {
+# Process 3-column CSV (Source_Pfad,Ziel_Pfad,New_filenames)
+process_path_update() {
     local md5_file="$1"
     local csv_file="$2"
     
-    info "Processing simple rename CSV format (old_full_path,new_full_path)"
+    info "Processing 3-column CSV: Source_Pfad,Ziel_Pfad,New_filenames"
     
-    # Read MD5 file content
+    # Read and validate files
+    [ ! -f "$md5_file" ] && error_exit "MD5 file not found: $md5_file"
+    [ ! -f "$csv_file" ] && error_exit "CSV file not found: $csv_file"
+    
     local md5_content=$(cat "$md5_file")
-    info "MD5 file loaded with $(echo "$md5_content" | wc -l) entries"
-    
-    # Count CSV rows
     TOTAL_ROWS=$(($(wc -l < "$csv_file") - 1))
-    info "Number of rename instructions to process: $TOTAL_ROWS"
+    info "MD5 entries: $(echo "$md5_content" | wc -l), CSV instructions: $TOTAL_ROWS"
     
     # Create backup
     local backup_file="${md5_file}.backup.$(date +%Y%m%d_%H%M%S)"
-    if [ "$DRY_RUN" = false ]; then
-        cp "$md5_file" "$backup_file"
-        success "Backup created: $backup_file"
-    fi
+    [ "$DRY_RUN" = false ] && cp "$md5_file" "$backup_file"
     
-    local updated_md5_content="$md5_content"
+    local updated_content="$md5_content"
     PROCESSED_CHANGES=0
     TOTAL_CHANGES=0
     
-    output_and_log "$(printf '=%.0s' {1..60})"
-    info "Starting full path updates in MD5 file..."
+    # Process CSV
+    {
+        read # Skip header
+        while IFS= read -r line; do
+            line=$(echo "$line" | tr -d '\r')
+            [ -z "$line" ] && continue
+            
+            IFS=',' read -r src dst newname <<< "$line"
+            src=$(echo "$src" | xargs)
+            dst=$(echo "$dst" | xargs)
+            newname=$(echo "$newname" | xargs)
+            
+            [ -z "$src" ] && continue
+            
+            PROCESSED_CHANGES=$((PROCESSED_CHANGES + 1))
+            show_progress $PROCESSED_CHANGES $TOTAL_ROWS
+            
+            [ "$VERBOSE" = true ] && echo "" && info "Processing: $src → $dst"
+            
+            # Update matching entries
+            local temp_content=""
+            while IFS= read -r md5_line; do
+                if [[ "$md5_line" =~ ^([a-f0-9]{32})[[:space:]]+(.+)$ ]]; then
+                    local hash="${BASH_REMATCH[1]}"
+                    local file_path="${BASH_REMATCH[2]}"
+                    
+                    if [[ "$file_path" == "$src/"* ]]; then
+                        local new_filename=$(build_new_filename "$file_path" "$dst" "$newname")
+                        local new_path="${dst}/${new_filename}"
+                        temp_content+="$hash  $new_path"$'\n'
+                        TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
+                        [ "$VERBOSE" = true ] && info "  Updated: $(basename "$file_path") → $(basename "$new_path")"
+                    else
+                        temp_content+="$md5_line"$'\n'
+                    fi
+                else
+                    temp_content+="$md5_line"$'\n'
+                fi
+            done <<< "$updated_content"
+            
+            updated_content="$temp_content"
+        done
+    } < "$csv_file"
     
-    # Process CSV file
+    save_results "$md5_file" "$backup_file" "$updated_content"
+}
+
+# Process 2-column CSV (old_full_path,new_full_path)
+process_simple_rename() {
+    local md5_file="$1"
+    local csv_file="$2"
+    
+    info "Processing 2-column CSV: old_full_path,new_full_path"
+    
+    # Read and validate files
+    [ ! -f "$md5_file" ] && error_exit "MD5 file not found: $md5_file"
+    [ ! -f "$csv_file" ] && error_exit "CSV file not found: $csv_file"
+    
+    local md5_content=$(cat "$md5_file")
+    TOTAL_ROWS=$(($(wc -l < "$csv_file") - 1))
+    info "MD5 entries: $(echo "$md5_content" | wc -l), CSV instructions: $TOTAL_ROWS"
+    
+    # Create backup
+    local backup_file="${md5_file}.backup.$(date +%Y%m%d_%H%M%S)"
+    [ "$DRY_RUN" = false ] && cp "$md5_file" "$backup_file"
+    
+    local updated_content="$md5_content"
+    PROCESSED_CHANGES=0
+    TOTAL_CHANGES=0
+    
+    # Process CSV
     {
         read # Skip header
         while IFS= read -r line; do
@@ -294,519 +235,291 @@ process_renamed_files_csv() {
             
             PROCESSED_CHANGES=$((PROCESSED_CHANGES + 1))
             show_progress $PROCESSED_CHANGES $TOTAL_ROWS
-            echo ""
-            info "Processing [$PROCESSED_CHANGES/$TOTAL_ROWS]: $old_path → $new_path"
             
-            # Update MD5 content - search for exact full path match
+            [ "$VERBOSE" = true ] && echo "" && info "Processing: $old_path → $new_path"
+            
+            # Replace exact path matches
             local temp_content=""
             local found_match=false
-            
             while IFS= read -r md5_line; do
                 if [[ "$md5_line" =~ ^([a-f0-9]{32})[[:space:]]+(.+)$ ]]; then
                     local hash="${BASH_REMATCH[1]}"
                     local file_path="${BASH_REMATCH[2]}"
                     
-                    # Compare full path
                     if [ "$file_path" = "$old_path" ]; then
-                        local new_line="$hash  $new_path"
-                        temp_content+="$new_line"$'\n'
-                        log_action "Renamed full path in MD5: $file_path → $new_path"
+                        temp_content+="$hash  $new_path"$'\n'
                         TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
                         found_match=true
-                        [ "$VERBOSE" = true ] && info "  Match found and updated: $old_path"
+                        [ "$VERBOSE" = true ] && info "  Match found and updated"
                     else
                         temp_content+="$md5_line"$'\n'
                     fi
                 else
                     temp_content+="$md5_line"$'\n'
                 fi
-            done <<< "$updated_md5_content"
+            done <<< "$updated_content"
             
-            updated_md5_content="$temp_content"
-            
-            if [ "$found_match" = true ]; then
-                success "Successfully renamed: $(basename "$old_path") → $(basename "$new_path")"
-            else
-                warning "Full path not found in MD5: $old_path"
-                if [ "$VERBOSE" = true ]; then
-                    info "  Available paths in MD5 file:"
-                    echo "$md5_content" | grep -o '[[:space:]].*$' | head -5
-                fi
-            fi
+            updated_content="$temp_content"
+            [ "$found_match" = false ] && [ "$VERBOSE" = true ] && warning "  No match found for: $old_path"
         done
     } < "$csv_file"
     
-    # Save results
-    save_results "$md5_file" "$backup_file" "$updated_md5_content"
+    save_results "$md5_file" "$backup_file" "$updated_content"
 }
 
-# Process standard path update CSV - FIXED
-process_path_update_csv() {
-    local md5_file="$1"
-    local csv_file="$2"
-    
-    info "Processing path update CSV format (Source_Pfad,Ziel_Pfad,New_filenames)"
-    
-    # Read MD5 file content
-    local md5_content=$(cat "$md5_file")
-    info "MD5 file loaded with $(echo "$md5_content" | wc -l) entries"
-    
-    # Count CSV rows
-    TOTAL_ROWS=$(($(wc -l < "$csv_file") - 1))
-    info "Number of path update instructions to process: $TOTAL_ROWS"
-    
-    # Create backup
-    local backup_file="${md5_file}.backup.$(date +%Y%m%d_%H%M%S)"
-    if [ "$DRY_RUN" = false ]; then
-        cp "$md5_file" "$backup_file"
-        success "Backup created: $backup_file"
-    fi
-    
-    local updated_md5_content="$md5_content"
-    PROCESSED_CHANGES=0
-    TOTAL_CHANGES=0
-    
-    output_and_log "$(printf '=%.0s' {1..60})"
-    info "Starting MD5 file updates..."
-    
-    # Process CSV file
-    {
-        read # Skip header
-        while IFS= read -r line; do
-            line=$(echo "$line" | tr -d '\r')
-            [ -z "$line" ] && continue
-            
-            IFS=$',;\t' read -r src dst newname <<< "$line"
-            src=$(echo "$src" | xargs)
-            dst=$(echo "$dst" | xargs)
-            newname=$(echo "$newname" | xargs)
-            
-            [ -z "$src" ] && continue
-            
-            PROCESSED_CHANGES=$((PROCESSED_CHANGES + 1))
-            show_progress $PROCESSED_CHANGES $TOTAL_ROWS
-            echo ""
-            info "Processing [$PROCESSED_CHANGES/$TOTAL_ROWS]: $src → $dst"
-            
-            local temp_content=""
-            local file_counter=0
-            
-            # Process each line in MD5 file
-            while IFS= read -r md5_line; do
-                if [[ "$md5_line" =~ ^([a-f0-9]{32})[[:space:]]+(.+)$ ]]; then
-                    local hash="${BASH_REMATCH[1]}"
-                    local file_path="${BASH_REMATCH[2]}"
-                    
-                    # Check if this file path matches our source pattern
-                    if [[ "$file_path" == "$src/"* ]]; then
-                        # Build new filename
-                        local new_filename=$(build_new_filename "$file_path" "$dst" "$newname")
-                        local new_path="${dst}/${new_filename}"
-                        local new_line="$hash  $new_path"
-                        
-                        [ "$VERBOSE" = true ] && info "  Update: $(basename "$file_path") → $(basename "$new_path")"
-                        log_action "Updated MD5 entry: $file_path → $new_path"
-                        
-                        temp_content+="$new_line"$'\n'
-                        file_counter=$((file_counter + 1))
-                        TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
-                    else
-                        # Keep original line unchanged
-                        temp_content+="$md5_line"$'\n'
-                    fi
-                else
-                    # Keep non-MD5 lines unchanged
-                    temp_content+="$md5_line"$'\n'
-                fi
-            done <<< "$updated_md5_content"
-            
-            # Update content for next iteration
-            updated_md5_content="$temp_content"
-            
-            if [ "$file_counter" -gt 0 ]; then
-                success "Updated $file_counter entries for path: $src"
-            else
-                warning "No matching entries found for path: $src"
-            fi
-        done
-    } < "$csv_file"
-    
-    # Save results
-    save_results "$md5_file" "$backup_file" "$updated_md5_content"
-}
-
-# Save results and create report - FIXED
+# Save results and create report
 save_results() {
     local md5_file="$1"
-    local backup_file="$2"
+    local backup_file="$2" 
     local updated_content="$3"
     
     echo ""
     show_progress $TOTAL_ROWS $TOTAL_ROWS
-    echo ""
-    echo ""
+    echo -e "\n"
     
-    # Save updated MD5 file
     if [ "$TOTAL_CHANGES" -gt 0 ]; then
         if [ "$DRY_RUN" = true ]; then
-            info "Dry-run mode: Would update $TOTAL_CHANGES entries in MD5 file"
-            output_and_log "${YELLOW}Preview of updated MD5 file:${NC}"
-            echo "$updated_content" | head -10
-            if [ "$(echo "$updated_content" | wc -l)" -gt 10 ]; then
-                info "... (showing first 10 lines)"
-            fi
+            info "DRY-RUN: Would update $TOTAL_CHANGES entries"
+            echo "$updated_content" | head -5
         else
-            # Remove trailing empty line and save
             echo -n "$updated_content" | sed '$s/$//' > "$md5_file"
-            success "Updated MD5 file saved: $md5_file"
-            success "Total entries updated: $TOTAL_CHANGES"
-            log_action "MD5 file updated with $TOTAL_CHANGES changes"
+            success "Updated MD5 file with $TOTAL_CHANGES changes"
+            success "Backup saved: $backup_file"
         fi
     else
-        warning "No matching entries found - MD5 file unchanged"
+        warning "No matching entries found - no changes made"
     fi
     
-    # Create detailed report
+    # Create report
     {
-        echo "=== MD5 Checksum Path Update Report ==="
-        echo "Execution time: $(date)"
-        echo "Base directory: $BASE_PATH"
+        echo "=== MD5 Update Report ==="
+        echo "Time: $(date)"
         echo "MD5 file: $md5_file"
-        echo "CSV instruction file: ${CSV_FILE:-N/A}"
-        echo "Search subdirectories: $SEARCH_SUBDIRS"
-        echo "Dry-run mode: $DRY_RUN"
-        echo "Verbose mode: $VERBOSE"
-        echo "Total CSV rows processed: $PROCESSED_CHANGES"
-        echo "Total MD5 entries updated: $TOTAL_CHANGES"
-        echo
-        if [ "$DRY_RUN" = true ]; then
-            echo "=== DRY-RUN MODE - NO ACTUAL CHANGES WERE MADE ==="
-            echo "The following shows what would happen in real execution:"
-            echo
-        fi
-        echo "=== Complete Terminal Output ==="
+        echo "CSV file: ${CSV_FILE:-N/A}"
+        echo "Changes made: $TOTAL_CHANGES"
+        echo "Dry-run: $DRY_RUN"
+        echo ""
         printf "%s\n" "${TERMINAL_LOG[@]}"
-        echo
-        echo "=== Operation Summary ==="
-        printf "%s\n" "${LOG_ACTIONS[@]}"
     } > "$OUTPUT_FILE"
     
-    success "Detailed report saved: $OUTPUT_FILE"
-    if [ "$DRY_RUN" = false ] && [ "$TOTAL_CHANGES" -gt 0 ]; then
-        success "Backup of original MD5 file: $backup_file"
-    fi
-    success "All operations completed!"
+    success "Report saved: $OUTPUT_FILE"
 }
 
-# Process all MD5 files in directory - UPDATED
-process_all_md5_files() {
-    local search_depth=1
-    if [ "$SEARCH_SUBDIRS" = true ]; then
-        search_depth=999
+# Find files
+find_files() {
+    local search_path="$1"
+    local pattern="$2"
+    local depth=1
+    [ "$SEARCH_SUBDIRS" = true ] && depth=999
+    
+    FILES=()
+    if command -v find >/dev/null 2>&1; then
+        while IFS= read -r -d '' file; do
+            FILES+=("$file")
+        done < <(find "$search_path" -maxdepth "$depth" -type f -name "$pattern" -print0 2>/dev/null)
+    else
+        for file in "$search_path"/$pattern; do
+            [ -f "$file" ] && FILES+=("$file")
+        done
     fi
+}
+
+# Process all MD5 files
+process_all_md5() {
+    find_files "$BASE_PATH" "*.md5"
+    local md5_files=("${FILES[@]}")
     
-    find_md5_files "$BASE_PATH" $search_depth
+    [ ${#md5_files[@]} -eq 0 ] && error_exit "No MD5 files found"
     
-    if [ ${#MD5_FILES[@]} -eq 0 ]; then
-        error_exit "No MD5 files found in directory: $BASE_PATH"
-    fi
-    
-    info "Found ${#MD5_FILES[@]} MD5 files to process:"
-    for file in "${MD5_FILES[@]}"; do
+    info "Found ${#md5_files[@]} MD5 files:"
+    for file in "${md5_files[@]}"; do
         info "  - $file"
     done
     
-    echo -ne "Process all these MD5 files? [y/n]: "
+    echo -ne "Process all files? [y/n]: "
     read confirm
-    TERMINAL_LOG+=("Process all these MD5 files? [y/n]: $confirm")
+    [[ ! "$confirm" =~ ^[Yy]$ ]] && { info "Cancelled."; return; }
     
-    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
-        info "Operation cancelled by user."
-        return
-    fi
+    # Choose processing type
+    output_and_log "Select processing type for ALL MD5 files:"
+    output_and_log "1) Path update (Source_Pfad → Ziel_Pfad + rename)"
+    output_and_log "2) Simple rename (old_full_path → new_full_path)"
+    echo -ne "Choice (1-2): "
+    read process_type
     
-    # Ask which type of CSV processing to use for all files
-    echo ""
-    output_and_log "Select CSV processing type for ALL MD5 files:"
-    output_and_log "1) Standard path update (Source_Pfad → Ziel_Pfad + rename)"
-    output_and_log "2) Simple full path rename (old_full_path → new_full_path)"
-    echo -ne "Enter choice (1-2): "
-    read csv_type_choice
-    TERMINAL_LOG+=("Enter choice (1-2): $csv_type_choice")
-    
-    local csv_processing_type=""
-    case "$csv_type_choice" in
-        1)
-            info "Will use standard path update processing for all MD5 files"
-            csv_processing_type="path_update"
-            ;;
-        2)
-            info "Will use simple full path rename processing for all MD5 files"
-            csv_processing_type="simple_rename"
-            ;;
-        *)
-            error_exit "Invalid selection: $csv_type_choice"
-            ;;
+    case "$process_type" in
+        1) info "Using path update processing" ;;
+        2) info "Using simple rename processing" ;;
+        *) error_exit "Invalid choice: $process_type" ;;
     esac
     
-    # Process each MD5 file
-    for md5_file in "${MD5_FILES[@]}"; do
-        output_and_log "$(printf '=%.0s' {1..80})"
-        info "Processing MD5 file: $md5_file"
+    # Process each file
+    for md5_file in "${md5_files[@]}"; do
+        output_and_log "$(printf '=%.0s' {1..60})"
+        info "Processing: $md5_file"
         
-        # Reset counters for each file
-        TOTAL_CHANGES=0
-        PROCESSED_CHANGES=0
-        
-        # Process based on selected type
-        if [ "$csv_processing_type" = "simple_rename" ]; then
-            process_renamed_files_csv "$md5_file" "$CSV_FILE"
-        else
-            process_path_update_csv "$md5_file" "$CSV_FILE"
-        fi
-        
-        echo ""
+        case "$process_type" in
+            1) process_path_update "$md5_file" "$CSV_FILE" ;;
+            2) process_simple_rename "$md5_file" "$CSV_FILE" ;;
+        esac
     done
     
-    success "All MD5 files processed successfully!"
+    success "All MD5 files processed!"
 }
 
-# Show main menu - UPDATED
-show_main_menu() {
-    output_and_log "${MAGENTA}=== MD5 Update Script - Main Menu ===${NC}"
-    output_and_log "Please select an operation:"
-    output_and_log ""
-    output_and_log "1) Standard path and/or filename update (Source_Pfad,Ziel_Pfad,New_filenames)"
-    output_and_log "   - Changes directory paths or filenames and optionally renames files"
-    output_and_log "   - Use 'rename' in New_filenames to auto-generate new names"
-	output_and_log "   - Write in New_filenames for a single files new name"
-    output_and_log ""
-    output_and_log "2) Change full path and filename (old_full_path_and_filename,new_full_path_and_filename)"
-    output_and_log "   - Direct path/filename.tif replacement, including path/filename changes"
-	output_and_log "   - Example: hashwert_abghs47864 aaa/bbb/ccc/aaa_bbb_nr_ccc_0001.tif 
-    output_and_log "   - CSV format: full/path/oldfilename.tif,full/path/newfilename.tif"
-	output_and_log "   - Example: hashwert_abghs47864 aaa/bbb/ccc/aaa_bbb_nr_ccc_0001.tif will be replaced as  
-	output_and_log "   - hashwert_abghs47864 xxx/yy/z/xxx_yyy_nr_z_0001.tif 
-    output_and_log ""
-    output_and_log "3) Process ALL MD5 files in directory or subdirectories"
-    output_and_log "   - Process 1 or Process 2 can be choosed for multiple md5 files (all in same Dir)"
-    output_and_log "   - Apply same CS operations to all found MD5 files"
-    output_and_log "   - You can choose processing type for all files"
-    output_and_log ""
-    output_and_log "4) Clean old backup and output files"
+# Clean old files
+clean_old_files() {
+    info "Cleaning old backup and output files..."
+    
+    local patterns=("*.backup.*" "md5_update_paths_output_*")
+    local files_found=0
+    
+    for pattern in "${patterns[@]}"; do
+        find_files "$BASE_PATH" "$pattern"
+        for file in "${FILES[@]}"; do
+            info "Found: $file"
+            if [ "$DRY_RUN" = false ]; then
+                rm "$file" && success "Deleted: $file"
+            else
+                info "Would delete: $file"
+            fi
+            files_found=$((files_found + 1))
+        done
+    done
+    
+    [ "$files_found" -eq 0 ] && info "No old files found"
+}
+
+# Main menu
+show_menu() {
+    output_and_log "${BLUE}=== MD5 Path Update Script v5.0 ===${NC}"
+    output_and_log "Select operation:"
+    output_and_log "1) Path update with rename (3-column CSV: Source_Pfad,Ziel_Pfad,New_filenames)"
+    output_and_log "2) Simple path/filename change (2-column CSV: old_full_path,new_full_path)"
+    output_and_log "3) Process ALL MD5 files in directory"
+    output_and_log "4) Clean old backup files"
     output_and_log "5) Exit"
-    output_and_log ""
     
-    echo -ne "Enter your choice (1-5): "
-    read menu_choice
-    TERMINAL_LOG+=("Enter your choice (1-5): $menu_choice")
-    
-    case "$menu_choice" in
-        1)
-            return 1  # Standard path update
-            ;;
-        2) 
-            return 2  # Simple rename
-            ;;
-        3)
-            return 3  # Process all MD5 files
-            ;;
-        4)
-            return 4  # Clean old files
-            ;;
-        5)
-            info "Exiting script. Goodbye!"
-            exit 0
-            ;;
-        *)
-            error_exit "Invalid selection: $menu_choice"
-            ;;
-    esac
+    echo -ne "Choice (1-5): "
+    read choice
+    echo "$choice"
 }
 
-# Main execution starts here
-output_and_log "${BLUE}=== MD5 Checksum Path Update Script v4.1 ===${NC}"
-output_and_log "This tool updates file paths and/or filenames in MD5 checksum files without moving actual files."
-output_and_log "Have a nice day :-)"
-output_and_log ""
+# MAIN EXECUTION
+info "MD5 Checksum Path Update Script"
 
-# Read command line options
+# Parse options
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -n|--dry-run)
-            DRY_RUN=true
-            info "Dry-run mode active - no changes will be made"
-            shift
-            ;;
-        -v|--verbose)
-            VERBOSE=true
-            info "Verbose mode active - detailed output will be shown"
-            shift
-            ;;
+        -n|--dry-run) DRY_RUN=true; info "Dry-run mode enabled"; shift ;;
+        -v|--verbose) VERBOSE=true; info "Verbose mode enabled"; shift ;;
         -h|--help)
-            output_and_log "${BLUE}Usage:${NC} $0 [-n|--dry-run] [-v|--verbose] [base_path]"
-            output_and_log "Options:"
-            output_and_log "  -n, --dry-run   Show changes without saving"
-            output_and_log "  -v, --verbose   Show detailed output"  
-            output_and_log "  -h, --help      Show this help message"
-            exit 0
-            ;;
-        *)
-            BASE_PATH="$1"
-            shift
-            ;;
+            echo "Usage: $0 [-n|--dry-run] [-v|--verbose] [base_path]"
+            echo "  -n, --dry-run   Preview changes without saving"
+            echo "  -v, --verbose   Show detailed output"
+            exit 0 ;;
+        *) BASE_PATH="$1"; shift ;;
     esac
 done
 
 # Get working directory
 if [ -z "$BASE_PATH" ]; then
-    info "No base directory specified."
     echo -ne "Use current directory ($(pwd))? [y/n]: "
     read choice
-    TERMINAL_LOG+=("Use current directory ($(pwd))? [y/n]: $choice")
-    if [[ "$choice" =~ ^[Yy]$ ]]; then
-        BASE_PATH=$(pwd)
-    else
-        echo -ne "Please enter base directory path: "
+    [[ "$choice" =~ ^[Yy]$ ]] && BASE_PATH=$(pwd) || {
+        echo -ne "Enter directory path: "
         read BASE_PATH
-        TERMINAL_LOG+=("Please enter base directory path: $BASE_PATH")
-    fi
+    }
 fi
 
-# Normalize base path
-BASE_PATH=$(normalize_path "$BASE_PATH")
+[ ! -d "$BASE_PATH" ] && error_exit "Directory not found: $BASE_PATH"
+cd "$BASE_PATH" || error_exit "Cannot change to: $BASE_PATH"
+info "Working in: $(pwd)"
 
-# Check if directory exists
-[ ! -d "$BASE_PATH" ] && error_exit "Base directory '$BASE_PATH' not found."
-cd "$BASE_PATH" || error_exit "Cannot change to directory: $BASE_PATH"
-
-info "Working directory: $(pwd)"
-
-# Create output filename
-OUTPUT_FILE="$(basename "$0" .sh)_output_$(date +%Y%m%d_%H%M%S).log"
-
-# Ask about subdirectory search
-echo -ne "Search for files in subdirectories too? [y/n]: "
+# Subdirectory search option
+echo -ne "Search in subdirectories? [y/n]: "
 read subdir_choice
-TERMINAL_LOG+=("Search for files in subdirectories too? [y/n]: $subdir_choice")
+[[ "$subdir_choice" =~ ^[Yy]$ ]] && SEARCH_SUBDIRS=true
 
-if [[ "$subdir_choice" =~ ^[Yy]$ ]]; then
-    SEARCH_SUBDIRS=true
-    info "Will search in subdirectories"
-else
-    SEARCH_SUBDIRS=false
-    info "Will search only in current directory"
-fi
+OUTPUT_FILE="md5_update_output_$(date +%Y%m%d_%H%M%S).log"
 
-# Set search depth
-SEARCH_DEPTH=1
-if [ "$SEARCH_SUBDIRS" = true ]; then
-    SEARCH_DEPTH=999
-fi
-
-# Show main menu
-show_main_menu
-OPERATION=$?
-
-# Handle clean old files operation
-if [ "$OPERATION" -eq 4 ]; then
-    info "Cleaning old backup and output files..."
-    clean_old_files "$BASE_PATH" $SEARCH_DEPTH
-    
-    # Create simple report for cleaning operation
-    {
-        echo "=== Old Files Cleanup Report ==="
-        echo "Execution time: $(date)"
-        echo "Base directory: $BASE_PATH"
-        echo "Search subdirectories: $SEARCH_SUBDIRS"
-        echo "Dry-run mode: $DRY_RUN"
-        echo
-        echo "=== Terminal Output ==="
-        printf "%s\n" "${TERMINAL_LOG[@]}"
-    } > "$OUTPUT_FILE"
-    
-    success "Cleanup report saved: $OUTPUT_FILE"
-    success "Cleanup operation completed!"
-    exit 0
-fi
-
-# Find CSV files
-find_csv_files "$BASE_PATH" $SEARCH_DEPTH
-
-if [ ${#CSV_FILES[@]} -eq 0 ]; then
-    error_exit "No CSV instruction files found in directory: $BASE_PATH"
-fi
-
-output_and_log "Available CSV instruction files:"
-for i in "${!CSV_FILES[@]}"; do
-    output_and_log "$((i+1))) ${CSV_FILES[$i]}"
-done
-
-echo -ne "Please select CSV file (1-${#CSV_FILES[@]}): "
-read csv_choice
-TERMINAL_LOG+=("Please select CSV file (1-${#CSV_FILES[@]}): $csv_choice")
-
-if [[ "$csv_choice" =~ ^[0-9]+$ ]] && [ "$csv_choice" -ge 1 ] && [ "$csv_choice" -le ${#CSV_FILES[@]} ]; then
-    CSV_FILE=$(normalize_path "${CSV_FILES[$((csv_choice-1))]}")
-    info "Selected CSV file: $CSV_FILE"
-else
-    error_exit "Invalid selection: $csv_choice"
-fi
-
-# Check CSV file
-[ ! -r "$CSV_FILE" ] && error_exit "Cannot read CSV file: $CSV_FILE"
-
-# Handle bulk processing (operation 3)
-if [ "$OPERATION" -eq 3 ]; then
-    info "Processing ALL MD5 files in directory..."
-    process_all_md5_files
-    exit 0
-fi
-
-# Find and select MD5 file for single file operations
-find_md5_files "$BASE_PATH" $SEARCH_DEPTH
-
-if [ ${#MD5_FILES[@]} -eq 0 ]; then
-    error_exit "No MD5 checksum files found in directory: $BASE_PATH"
-fi
-
-output_and_log "Available MD5 checksum files:"
-for i in "${!MD5_FILES[@]}"; do
-    output_and_log "$((i+1))) ${MD5_FILES[$i]}"
-done
-
-echo -ne "Please select MD5 file (1-${#MD5_FILES[@]}): "
-read md5_choice
-TERMINAL_LOG+=("Please select MD5 file (1-${#MD5_FILES[@]}): $md5_choice")
-
-if [[ "$md5_choice" =~ ^[0-9]+$ ]] && [ "$md5_choice" -ge 1 ] && [ "$md5_choice" -le ${#MD5_FILES[@]} ]; then
-    MD5_FILE=$(normalize_path "${MD5_FILES[$((md5_choice-1))]}")
-    info "Selected MD5 file: $MD5_FILE"
-else
-    error_exit "Invalid selection: $md5_choice"
-fi
-
-# Check MD5 file
-[ ! -r "$MD5_FILE" ] && error_exit "Cannot read MD5 file: $MD5_FILE"
-
-# Process based on operation type
-case "$OPERATION" in
-    1)
-        info "Starting standard path update operation..."
-        process_path_update_csv "$MD5_FILE" "$CSV_FILE"
+# Main menu loop
+choice=$(show_menu)
+case "$choice" in
+    1|2|3)
+        # Find CSV files
+        find_files "$BASE_PATH" "*.csv"
+        csv_files=("${FILES[@]}")
+        
+        [ ${#csv_files[@]} -eq 0 ] && error_exit "No CSV files found"
+        
+        info "Available CSV files:"
+        for i in "${!csv_files[@]}"; do
+            info "$((i+1))) ${csv_files[$i]}"
+        done
+        
+        echo -ne "Select CSV file (1-${#csv_files[@]}): "
+        read csv_choice
+        
+        if [[ "$csv_choice" =~ ^[0-9]+$ ]] && [ "$csv_choice" -ge 1 ] && [ "$csv_choice" -le ${#csv_files[@]} ]; then
+            CSV_FILE="${csv_files[$((csv_choice-1))]}"
+            info "Selected: $CSV_FILE"
+        else
+            error_exit "Invalid selection: $csv_choice"
+        fi
+        
+        case "$choice" in
+            1)
+                # Find MD5 files for single processing
+                find_files "$BASE_PATH" "*.md5"
+                md5_files=("${FILES[@]}")
+                
+                [ ${#md5_files[@]} -eq 0 ] && error_exit "No MD5 files found"
+                
+                info "Available MD5 files:"
+                for i in "${!md5_files[@]}"; do
+                    info "$((i+1))) ${md5_files[$i]}"
+                done
+                
+                echo -ne "Select MD5 file (1-${#md5_files[@]}): "
+                read md5_choice
+                
+                if [[ "$md5_choice" =~ ^[0-9]+$ ]] && [ "$md5_choice" -ge 1 ] && [ "$md5_choice" -le ${#md5_files[@]} ]; then
+                    MD5_FILE="${md5_files[$((md5_choice-1))]}"
+                    process_path_update "$MD5_FILE" "$CSV_FILE"
+                else
+                    error_exit "Invalid selection: $md5_choice"
+                fi
+                ;;
+            2)
+                # Find MD5 files for single processing
+                find_files "$BASE_PATH" "*.md5"
+                md5_files=("${FILES[@]}")
+                
+                [ ${#md5_files[@]} -eq 0 ] && error_exit "No MD5 files found"
+                
+                info "Available MD5 files:"
+                for i in "${!md5_files[@]}"; do
+                    info "$((i+1))) ${md5_files[$i]}"
+                done
+                
+                echo -ne "Select MD5 file (1-${#md5_files[@]}): "
+                read md5_choice
+                
+                if [[ "$md5_choice" =~ ^[0-9]+$ ]] && [ "$md5_choice" -ge 1 ] && [ "$md5_choice" -le ${#md5_files[@]} ]; then
+                    MD5_FILE="${md5_files[$((md5_choice-1))]}"
+                    process_simple_rename "$MD5_FILE" "$CSV_FILE"
+                else
+                    error_exit "Invalid selection: $md5_choice"
+                fi
+                ;;
+            3) process_all_md5 ;;
+        esac
         ;;
-    2)
-        info "Starting simple filename rename operation..."
-        process_renamed_files_csv "$MD5_FILE" "$CSV_FILE"
-        ;;
-    *)
-        error_exit "Unknown operation: $OPERATION"
-        ;;
+    4) clean_old_files ;;
+    5) info "Goodbye!"; exit 0 ;;
+    *) error_exit "Invalid choice: $choice" ;;
 esac
 
-if [ "$DRY_RUN" = true ]; then
-    info "This was a dry-run. Remove -n parameter to make actual changes."
-fi
-
-echo ""
-output_and_log "${GREEN}=== Script Execution Completed Successfully! ===${NC}"
+success "Operation completed successfully!"
+[ "$DRY_RUN" = true ] && info "This was a dry-run. Remove -n to make actual changes."
