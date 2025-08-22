@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : search_folder_status.sh
-# Version     : 1.6
+# Version     : 1.7
 # Author      : Mustafa Demiroglu
 # Purpose     : 
 #   This script checks if the folders listed in a file exist under /media/cepheus.
@@ -12,7 +12,6 @@
 #   Only files with .csv, .txt, or .list extensions can be selected.
 #   It checks if each folder exists under /media/cepheus.
 #   Results are saved to search_result.csv with two columns: folder path and status.
-#   The script uses simple English for comments and messages.
 ###############################################################################
 
 # Function to remove spaces and special characters from start and end
@@ -48,6 +47,9 @@ fi
 # Clear any previous result file, so we start fresh
 > search_result.csv
 
+# Write the header line to the result file (comma separated)
+echo "Folder Path,Status" > search_result.csv
+
 # Read each line in the input file
 while IFS= read -r line || [[ -n "$line" ]]; do
   # Split line with comma, space, or semicolon
@@ -63,9 +65,9 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     echo -ne "\rSearching: $folder_path                                "
     # Check if folder exists
     if [[ -d "$full_path" ]]; then
-      echo -e "$folder_path\texist" >> search_result.csv
+      echo -e "$folder_path,exist" >> search_result.csv
     else
-      echo -e "$folder_path\tnot_exist" >> search_result.csv
+      echo -e "$folder_path,not_exist" >> search_result.csv
     fi
   done
 done < "$input_file"
