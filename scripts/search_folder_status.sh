@@ -48,7 +48,7 @@ fi
 > search_result.csv
 
 # Write the header line to the result file (comma separated)
-echo "Folder Path,Status" > search_result.csv
+echo "Folder Path;Status" > search_result.csv
 
 # Read each line in the input file
 while IFS= read -r line || [[ -n "$line" ]]; do
