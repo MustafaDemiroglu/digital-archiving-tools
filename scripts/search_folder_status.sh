@@ -70,7 +70,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
   if [[ -d "$full_path" ]]; then
     echo -e "$folder_path;exist" >> search_result.csv
   else
-    echo -e "$folder_path,not_exist" >> search_result.csv
+    echo -e "$folder_path;not_exist" >> search_result.csv
   fi
 
 done < "$input_file"
