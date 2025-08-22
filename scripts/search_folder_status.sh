@@ -2,24 +2,29 @@
 
 ###############################################################################
 # Script Name : search_folder_status.sh
-# Version     : 1.3
+# Version     : 1.4
 # Author      : Mustafa Demiroglu
 # Purpose     : 
 #   This script checks if the folders listed in a file exist under /media/cepheus.
 #   You can use CSV, TXT or any file with folder paths separated by comma, space, semicolon, or newlines.
-#   If no file is given, it lets you choose a file from the current directory.
+#   If no file is given, it lets you choose a file from the current directory (shows ONLY regular files).
 ###############################################################################
 
-# This function removes spaces and special characters from the start and end of the text
+# Trim function
 trim() {
   echo -n "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/\r//g'
 }
 
-# If no file is given as an argument, let the user select one
+# If no file is given as an argument, let the user select one (ONLY regular files, not directories)
 if [[ -z "$1" ]]; then
-  echo "No file given. Listing files in this folder:"
-  select filename in *; do
-    if [[ -f "$filename" ]]; then
+  echo "No file given. Listing only files in this folder:"
+  mapfile -t files < <(find . -maxdepth 1 -type f -printf "%f\n")
+  if [[ ${#files[@]} -eq 0 ]]; then
+    echo "No regular files found in this directory."
+    exit 1
+  fi
+  select filename in "${files[@]}"; do
+    if [[ -n "$filename" && -f "$filename" ]]; then
       input_file="$filename"
       break
     else
@@ -34,30 +39,24 @@ else
   fi
 fi
 
-# Create the result file and write the header
-echo "Folder Path, Status" > search_result.csv
+# Create the result file and write the header (tab separated: real CSV)
+echo -e "Folder Path\tStatus" > search_result.csv
 
-# Read the input file line by line
 while IFS= read -r line || [[ -n "$line" ]]; do
-  # Split the line by comma, space or semicolon
   IFS=$' ,;' read -ra paths <<< "$line"
   for raw_path in "${paths[@]}"; do
     folder_path=$(trim "$raw_path")
-    # If the folder path is empty, skip
     if [[ -z "$folder_path" ]]; then
       continue
     fi
     full_path="/media/cepheus/$folder_path"
-    # Show progress in the terminal (no new line)
     echo -ne "\rSearching: $folder_path                                "
-    # Check if directory exists
     if [[ -d "$full_path" ]]; then
-      echo "$folder_path, exist" >> search_result.csv
+      echo -e "$folder_path\texist" >> search_result.csv
     else
-      echo "$folder_path, not_exist" >> search_result.csv
+      echo -e "$folder_path\tnot_exist" >> search_result.csv
     fi
   done
 done < "$input_file"
 
-# Show done message and clear line
 echo -e "\rSearch complete. Results saved to search_result.csv.       "
