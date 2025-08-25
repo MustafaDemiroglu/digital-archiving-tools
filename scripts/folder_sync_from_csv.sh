@@ -127,7 +127,16 @@ process_folder() {
 
   [[ -z "$folder" ]] && return 0
 
-  # Normalize source dir (strip trailing slash for clean relpaths)
+   # --- Normalize paths ---
+  # Replace Windows-style backslashes with forward slashes
+  folder="$(echo "$folder" | sed 's#\\#/#g')"
+
+  # Ensure absolute path (add leading "/" if missing)
+  if [[ "$folder" != /* ]]; then
+    folder="/$folder"
+  fi
+
+  # Remove trailing slash for clean relpaths
   folder="${folder%/}"
 
   if [[ ! -d "$folder" ]]; then
