@@ -127,7 +127,10 @@ process_folder() {
 
   [[ -z "$folder" ]] && return 0
 
-   # --- Normalize paths ---
+  # --- Normalize paths ---
+  # Trim whitespace and Windows CR (\r) if present
+  folder="$(echo "$folder" | tr -d '\r' | xargs)"
+
   # Replace Windows-style backslashes with forward slashes
   folder="$(echo "$folder" | sed 's#\\#/#g')"
 
