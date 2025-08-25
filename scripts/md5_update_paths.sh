@@ -170,11 +170,11 @@ build_new_filename() {
         local prefix=""
         local dst_folder=""
         
-        if [ $L -ge 2 ]; then
-            prefix="${DST_PARTS[$L-2]}_${DST_PARTS[$L-1]}"
+        if [ $L -ge 3 ]; then
+            prefix="${DST_PARTS[$L-3]}_${DST_PARTS[$L-2]}"
             dst_folder="${DST_PARTS[$L-1]}"
-        elif [ $L -ge 1 ]; then
-            prefix="${DST_PARTS[$L-1]}"
+        elif [ $L -ge 2 ]; then
+            prefix="${DST_PARTS[$L-2]}"
             dst_folder="${DST_PARTS[$L-1]}"
         else
             prefix="file"
