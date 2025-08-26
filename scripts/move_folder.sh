@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: folder_sync_from_csv.sh (Version: 2.1)
+# Script Name: move_folder.sh (Version: 3.2)
 # Author: Mustafa Demiroglu
 # Description:
 #   This script reads a CSV file that contains a list of folder paths (one per line).
@@ -8,6 +8,8 @@
 #   file integrity with per-file SHA-256 checks. Only after successful verification
 #   are source files removed. If verification fails, the source is kept and an
 #   error is recorded.
+#   - Reliable logging and error reporting even with parallel execution.
+#   - Preserves full source directory structure under the target directory.
 #
 # Features:
 #   - Dry-run mode (preview actions without changes).
@@ -37,7 +39,7 @@ DRY_RUN=false
 PARALLEL_JOBS=1
 
 # Date/Time for log naming
-SCRIPT_BASENAME="folder_sync_from_csv"
+SCRIPT_BASENAME="move_folder"
 RUN_DATUM="$(date +'%Y%m%d_%H%M%S')"
 LOG_FILE="log_${SCRIPT_BASENAME}_${RUN_DATUM}.log"
 ERROR_FILE="error_${SCRIPT_BASENAME}_${RUN_DATUM}.csv"
@@ -85,7 +87,6 @@ for bin in rsync sha256sum; do
 done
 
 # Parallel optional
-PARALLEL_AVAILABLE=false
 if command -v parallel >/dev/null 2>&1; then
   PARALLEL_AVAILABLE=true
 else
@@ -106,15 +107,17 @@ log_lock_write() {
 }
 
 append_error_csv() {
-  # CSV columns: folder,relative_path,error_type,message
-  local folder="$1"
-  local relpath="$2"
-  local etype="$3"
-  local msg="$4"
+  local file="$1"
+  local folder="$2"
+  local relpath="$3"
+  local etype="$4"
+  local msg="$5"
   {
-    flock -x 200
-    printf "\"%s\",\"%s\",\"%s\",\"%s\"\n" "$folder" "$relpath" "$etype" "$msg"
-  } 200>>"$ERROR_FILE"
+    (
+      flock -x 200
+      printf "\"%s\",\"%s\",\"%s\",\"%s\"\n" "$folder" "$relpath" "$etype" "$msg"
+    ) 200>>"$file"
+  }
 }
 
 # Init outputs
@@ -125,16 +128,20 @@ if [[ ! -s "$ERROR_FILE" ]]; then
 fi
 
 # --- Core worker: process one folder ---
+# Main function: copies the source folder to the target, preserving path structure
+
 process_folder() {
-  local folder="$1"
+  local orig_folder="$1"
   local dry="$2"
   local target="$3"
+  local log_file="$4"
+  local err_file="$5"
 
-  [[ -z "$folder" ]] && return 0
+  [[ -z "$orig_folder" ]] && return 0
 
   # --- Normalize paths ---
   # Trim whitespace and Windows CR (\r) if present
-  folder="$(echo "$folder" | tr -d '\r' | xargs)"
+  local folder="$(echo "$orig_folder" | tr -d '\r' | xargs)"
 
   # Replace Windows-style backslashes with forward slashes
   folder="$(echo "$folder" | sed 's#\\#/#g')"
@@ -153,24 +160,27 @@ process_folder() {
     return 0
   fi
 
-  local fname dest
+  local dest="$target/$abs_base"
   fname="$(basename "$folder")"
   dest="$target/$fname"
 
+  # Create parent directories for the destination
+  mkdir -p "$dest"
+  
   if [[ "$dry" == true ]]; then
-    log_lock_write "$LOG_FILE" "[DRY RUN] Would rsync: '$folder/' -> '$dest/'"
+    log_lock_write "$log_file" "[DRY RUN] Would rsync: '$folder/' -> '$dest/'"
     rsync -a --dry-run "$folder/" "$dest/"
     return 0
   fi
 
   # 1) Copy (no removal yet)
-  log_lock_write "$LOG_FILE" "[INFO] Rsync copy start: '$folder/' -> '$dest/'"
+  log_lock_write "$log_file" "[INFO] Rsync copy start: '$folder/' -> '$dest/'"
   if ! rsync -a "$folder/" "$dest/"; then
-    log_lock_write "$LOG_FILE" "[ERROR] Rsync failed for -> $folder"
-    append_error_csv "$folder" "" "rsync_failed" "rsync returned non-zero exit code"
+    log_lock_write "$log_file" "[ERROR] Rsync failed for -> $folder"
+    append_error_csv "$err_file" "$folder" "" "rsync_failed" "rsync returned non-zero exit code"
     return 0
   fi
-  log_lock_write "$LOG_FILE" "[INFO] Rsync copy done: '$folder/' -> '$dest/'"
+  log_lock_write "$log_file" "[INFO] Rsync copy done: '$folder/' -> '$dest/'"
 
   # 2) Verify per-file checksum
   local mismatches=0 missing=0 verified=0 total=0
@@ -228,12 +238,12 @@ echo "----------------------------------------"
 # --- Dispatch work ---
 if [[ "$PARALLEL_JOBS" -gt 1 && "$PARALLEL_AVAILABLE" == true ]]; then
   # Feed non-empty lines to parallel
-  grep -v '^[[:space:]]*$' "$CSV_FILE" | parallel -j "$PARALLEL_JOBS" --will-cite --no-notice process_folder {} "$DRY_RUN" "$TARGET_DIR"
+  grep -v '^[[:space:]]*$' "$CSV_FILE" | parallel -j "$PARALLEL_JOBS" --will-cite --no-notice process_folder {} "$DRY_RUN" "$TARGET_DIR" "$LOG_FILE" "$ERROR_FILE"
 else
   # Sequential
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
-    process_folder "$line" "$DRY_RUN" "$TARGET_DIR"
+    process_folder "$line" "$DRY_RUN" "$TARGET_DIR" "$LOG_FILE" "$ERROR_FILE"
   done < "$CSV_FILE"
 fi
 
