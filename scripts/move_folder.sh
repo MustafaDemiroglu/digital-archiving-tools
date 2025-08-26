@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: move_folder.sh (Version: 3.3)
+# Script Name: move_folder.sh (Version: 3.4)
 # Author: Mustafa Demiroglu
 # Description:
 #   This script reads a CSV file that contains a list of folder paths (one per line).
@@ -38,6 +38,7 @@ CSV_FILE=""
 TARGET_DIR=""
 DRY_RUN=false
 PARALLEL_JOBS=1
+VERBOSE=false   # <--- [1] verbose modu eklendi
 
 # Date/Time for log naming
 SCRIPT_BASENAME="move_folder"
@@ -52,13 +53,14 @@ print_usage() {
   echo "verifies files with SHA-256, then removes source files only if verified."
   echo
   echo "Usage:"
-  echo "  $0 -c input.csv -t /path/to/target [-n|--dry-run] [-p N|--parallel N]"
+  echo "  $0 -c input.csv -t /path/to/target [-n|--dry-run] [-p N|--parallel N] [-v|--verbose]"
   echo
   echo "Options:"
   echo "  -c FILE       Path to CSV file containing folder paths (one per line)."
   echo "  -t DIR        Target directory where folders will be placed."
   echo "  -n, --dry-run Show planned actions without copying/removing files."
   echo "  -p N, --parallel N  Run N parallel jobs (requires GNU parallel)."
+  echo "  -v, --verbose Print log messages also to the terminal."
   echo
 }
 
@@ -69,6 +71,7 @@ while [[ $# -gt 0 ]]; do
     -t) TARGET_DIR="$2"; shift 2;;
     -n|--dry-run) DRY_RUN=true; shift;;
     -p|--parallel) PARALLEL_JOBS="$2"; shift 2;;
+    -v|--verbose) VERBOSE=true; shift;;   # <--- [2] verbose parametresi
     -h|--help) print_usage; exit 0;;
     *) echo -e "${RED}Unknown option: $1${NC}"; print_usage; exit 1;;
   esac
@@ -102,7 +105,11 @@ log_lock_write() {
   # $1 = file, $2... = message
   # Logging is done by opening, appending and closing per call (to avoid problems with flock and env in subshells)
   local file="$1"; shift
-  printf "%s %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$file"
+  local msg="$(printf "%s %s\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$*")"
+  printf "%s\n" "$msg" >> "$file"
+  if [[ "$VERBOSE" == true ]]; then    # <--- [3] verbose terminal print
+    printf "%s\n" "$msg"
+  fi
 }
 
 append_error_csv() {
@@ -140,11 +147,10 @@ process_folder() {
   local folder="$(echo "$orig_folder" | tr -d '\r' | xargs)"
   # Replace Windows-style backslashes with forward slashes 
   folder="$(echo "$folder" | sed 's#\\#/#g')"
-  
-  # Ensure absolute path (add leading "/" if missing)
-  if [[ "$folder" != /* ]]; then
-    folder="/$folder"
-  fi
+
+  # Alt yol substring logic için normalize: başındaki çift/kesirli slash'lar silinsin
+  folder="$(echo "$folder" | sed 's#^/*##')"
+  folder="/$folder"
 
   # Remove trailing slash for clean relpaths
   folder="${folder%/}"
@@ -156,19 +162,19 @@ process_folder() {
   fi
 
   # --------- Begin: Custom destination path logic -----------
-  # If folder path starts with one of the base roots, strip that part for abs_base.
+  # Base roots substring mantigi: eger path'in herhangi bir yerine "/media/archive/www" veya "/media/cepheus" varsa, ilk gecen yerden itibaren substring çıkarılır.
   local abs_base=""
   local base1="/media/archive/www"
   local base2="/media/cepheus"
   if [[ "$folder" == "$base1"* ]]; then
-    abs_base="${folder#$base1/}"
+    abs_base="${folder:${#base1}}"
+    abs_base="${abs_base#/}"
   elif [[ "$folder" == "$base2"* ]]; then
-    abs_base="${folder#$base2/}"
+    abs_base="${folder:${#base2}}"
+    abs_base="${abs_base#/}"
   else
-    # If not matching, keep the whole path (without leading slash)
     abs_base="${folder#/}"
   fi
-  # Compose final destination directory path
   local dest="$target/$abs_base"
   # --------- End: Custom destination path logic -------------
 
@@ -237,6 +243,7 @@ echo -e "${CYAN}Dry run:${NC} $DRY_RUN"
 echo -e "${CYAN}Parallel jobs:${NC} $PARALLEL_JOBS"
 echo -e "${CYAN}Log file:${NC} $LOG_FILE"
 echo -e "${CYAN}Error file:${NC} $ERROR_FILE"
+echo -e "${CYAN}Verbose:${NC} $VERBOSE"
 echo "----------------------------------------"
 
 # --- Dispatch work ---
