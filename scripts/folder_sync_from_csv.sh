@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: folder_sync_from_csv.sh
+# Script Name: folder_sync_from_csv.sh (Version: 2.1)
+# Author: Mustafa Demiroglu
 # Description:
 #   This script reads a CSV file that contains a list of folder paths (one per line).
 #   It synchronizes each folder into a target directory using rsync, then verifies
@@ -16,7 +17,7 @@
 #   - Optional parallel execution with GNU parallel.
 #
 # Usage:
-#   ./csv_folder_sync.sh -c input.csv -t /path/to/target [--dry-run] [--parallel N]
+#   ./csv_folder_sync.sh -c input.csv -t /path/to/target [-n|--dry-run] [-p N|--parallel N]
 #
 # CSV format:
 #   Each line contains ONE absolute or relative folder path.
@@ -34,8 +35,12 @@ CSV_FILE=""
 TARGET_DIR=""
 DRY_RUN=false
 PARALLEL_JOBS=1
-LOG_FILE="script.log"
-ERROR_FILE="errors.csv"
+
+# Date/Time for log naming
+SCRIPT_BASENAME="folder_sync_from_csv"
+RUN_DATUM="$(date +'%Y%m%d_%H%M%S')"
+LOG_FILE="log_${SCRIPT_BASENAME}_${RUN_DATUM}.log"
+ERROR_FILE="error_${SCRIPT_BASENAME}_${RUN_DATUM}.csv"
 
 # --- Utility: usage ---
 print_usage() {
@@ -44,13 +49,13 @@ print_usage() {
   echo "verifies files with SHA-256, then removes source files only if verified."
   echo
   echo "Usage:"
-  echo "  $0 -c input.csv -t /path/to/target [--dry-run] [--parallel N]"
+  echo "  $0 -c input.csv -t /path/to/target [-n|--dry-run] [-p N|--parallel N]"
   echo
   echo "Options:"
   echo "  -c FILE       Path to CSV file containing folder paths (one per line)."
   echo "  -t DIR        Target directory where folders will be placed."
-  echo "  --dry-run     Show planned actions without copying/removing files."
-  echo "  --parallel N  Run N parallel jobs (requires GNU parallel)."
+  echo "  -n, --dry-run Show planned actions without copying/removing files."
+  echo "  -p N, --parallel N  Run N parallel jobs (requires GNU parallel)."
   echo
 }
 
@@ -59,8 +64,8 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -c) CSV_FILE="$2"; shift 2;;
     -t) TARGET_DIR="$2"; shift 2;;
-    --dry-run) DRY_RUN=true; shift;;
-    --parallel) PARALLEL_JOBS="$2"; shift 2;;
+    -n|--dry-run) DRY_RUN=true; shift;;
+    -p|--parallel) PARALLEL_JOBS="$2"; shift 2;;
     -h|--help) print_usage; exit 0;;
     *) echo -e "${RED}Unknown option: $1${NC}"; print_usage; exit 1;;
   esac
@@ -216,6 +221,8 @@ echo -e "${CYAN}CSV:${NC} $CSV_FILE"
 echo -e "${CYAN}Target:${NC} $TARGET_DIR"
 echo -e "${CYAN}Dry run:${NC} $DRY_RUN"
 echo -e "${CYAN}Parallel jobs:${NC} $PARALLEL_JOBS"
+echo -e "${CYAN}Log file:${NC} $LOG_FILE"
+echo -e "${CYAN}Error file:${NC} $ERROR_FILE"
 echo "----------------------------------------"
 
 # --- Dispatch work ---
