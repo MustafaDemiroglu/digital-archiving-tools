@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: md5_update_paths.sh (Version 6.0)
+# Script Name: md5_update_paths.sh (Version 7.0)
 #
 # Description:
 #   This script updates MD5 checksum files by changing file paths and names
-#   according to instructions in a CSV file, without moving actual files.
+#   according to instructions in a CSV file, without moving actual files. 
+# 	if you want to delete something from md5, Ziel_Pfadand newname should be empty in csv file
 #
 # Usage:
 #   ./md5_update_paths.sh [-n] [-v] [base_path]
@@ -306,12 +307,19 @@ process_path_update_csv() {
             line=$(echo "$line" | tr -d '\r')
             [ -z "$line" ] && continue
             
-            IFS=$',;\t' read -r src dst newname <<< "$line"
+			IFS=$',;\t' read -r src dst newname <<< "$line"
             src=$(echo "$src" | xargs)
             dst=$(echo "$dst" | xargs)
             newname=$(echo "$newname" | xargs)
             
             [ -z "$src" ] && continue
+            
+            # Check if this is a deletion operation (empty dst and newname)
+            local is_deletion=false
+            if [ -z "$dst" ] && [ -z "$newname" ]; then
+                is_deletion=true
+                info "Deletion mode: Will remove all entries matching path: $src"
+            fi
             
             PROCESSED_CHANGES=$((PROCESSED_CHANGES + 1))
             show_progress $PROCESSED_CHANGES $total_rows
@@ -329,18 +337,25 @@ process_path_update_csv() {
                     
                     # Check if this file path matches our source pattern
                     if [[ "$file_path" == "$src/"* ]]; then
-                        # Build new filename
-                        local new_filename
-                        new_filename=$(build_new_filename "$file_path" "$dst" "$newname" "$file_counter")
-                        local new_path="${dst}/${new_filename}"
-                        local new_line="$hash  $new_path"
-                        
-                        [ "$VERBOSE" = true ] && info "  Update: $(basename "$file_path") → $(basename "$new_path")"
-                        log_action "Updated MD5 entry: $file_path → $new_path"
-                        
-                        temp_content+="$new_line"$'\n'
-                        file_counter=$((file_counter + 1))
-                        TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
+                        if [ "$is_deletion" = true ]; then
+                            # Delete this entry (don't add to temp_content)
+                            [ "$VERBOSE" = true ] && info "  Deleted: $file_path"
+                            log_action "Deleted MD5 entry: $file_path"
+                            TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
+                        else
+                            # Build new filename
+                            local new_filename
+                            new_filename=$(build_new_filename "$file_path" "$dst" "$newname" "$file_counter")
+                            local new_path="${dst}/${new_filename}"
+                            local new_line="$hash  $new_path"
+                            
+                            [ "$VERBOSE" = true ] && info "  Update: $(basename "$file_path") → $(basename "$new_path")"
+                            log_action "Updated MD5 entry: $file_path → $new_path"
+                            
+                            temp_content+="$new_line"$'\n'
+                            file_counter=$((file_counter + 1))
+                            TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
+                        fi
                     else
                         # Keep original line unchanged
                         temp_content+="$md5_line"$'\n'
@@ -354,10 +369,18 @@ process_path_update_csv() {
             # Update content for next iteration
             updated_md5_content="$temp_content"
             
-            if [ "$file_counter" -gt 1 ]; then
-                success "Updated $((file_counter - 1)) entries for path: $src"
+            if [ "$is_deletion" = true ]; then
+                if [ "$TOTAL_CHANGES" -gt 0 ]; then
+                    success "Deleted entries for path: $src"
+                else
+                    warning "No matching entries found to delete for path: $src"
+                fi
             else
-                warning "No matching entries found for path: $src"
+                if [ "$file_counter" -gt 1 ]; then
+                    success "Updated $((file_counter - 1)) entries for path: $src"
+                else
+                    warning "No matching entries found for path: $src"
+                fi
             fi
         done
     } < "$csv_file"
@@ -674,7 +697,7 @@ if [ "$OPERATION" -eq 4 ]; then
     info "Cleaning old backup and output files..."
     clean_old_files "$BASE_PATH" $SEARCH_DEPTH
     
-    local output_file="md5_update_paths_output_$(date +%Y%m%d_%H%M%S).log"
+    output_file="md5_update_paths_output_$(date +%Y%m%d_%H%M%S).log"
     {
         echo "=== Old Files Cleanup Report ==="
         echo "Execution time: $(date)"
