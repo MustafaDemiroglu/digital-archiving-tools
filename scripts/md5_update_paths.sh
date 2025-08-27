@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: md5_update_paths.sh (Version 7.0)
+# Script Name: md5_update_paths.sh (Version 7.1)
 #
 # Description:
 #   This script updates MD5 checksum files by changing file paths and names
 #   according to instructions in a CSV file, without moving actual files. 
-# 	if you want to delete something from md5, Ziel_Pfadand newname should be empty in csv file
+#   If Ziel_Pfad and New_filenames are empty, entries matching Source_Pfad will be deleted
+#   Deletion removes complete MD5 lines (hash + file path)
 #
 # Usage:
 #   ./md5_update_paths.sh [-n] [-v] [base_path]
@@ -565,12 +566,13 @@ process_all_md5_files() {
 }
 
 show_main_menu() {
-    output_and_log "${MAGENTA}=== MD5 Update Script - Main Menu ===${NC}"
+	output_and_log "${MAGENTA}=== MD5 Update Script - Main Menu ===${NC}"
     output_and_log "Please select an operation:"
     output_and_log ""
     output_and_log "1) Standard path update (Source_Pfad,Ziel_Pfad,New_filenames)"
     output_and_log "   - Changes directory paths and optionally renames files"
     output_and_log "   - Use 'rename' in New_filenames to auto-generate new names"
+    output_and_log "   - Empty Ziel_Pfad and New_filenames matched entries will be deleted"
     output_and_log ""
     output_and_log "2) Simple full path rename (old_full_path,new_full_path)"
     output_and_log "   - Direct path replacement, no automatic naming"
