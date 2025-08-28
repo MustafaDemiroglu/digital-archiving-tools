@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: ausbelichtung_rename_and_copy.sh Version:1.2
+# Script Name: ausbelichtung_rename_and_copy.sh Version:2.3
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -17,10 +17,13 @@
 #     should be executed
 #
 # Operations:
-#   1) Pad lowest-level folder names to 5 digits.
+#   1) Pad lowest-level folder names to 5 digits. Additional digits will be named to 3 digits. (145--3 will be 00145--003)
+#	   If the folder name is purely descriptive (e.g., "bestandsblatt"), it is left unchanged. 
 #   2) Pad file numbers in lowest-level folder files to 5 digits.
-#   3) Copy a reference test image into each lowest-level folder and rename it.
-#
+#      If the filename ends with text (e.g., "..._bestandsblatt.jpg"), it is left unchanged. (e.g., "scan_7.tif" → "scan_00007.tif")
+#   3) Copy a reference test image ("TESTCHART.jpg") into each lowest-level folder and rename it. (e.g., "scan_00000.tif")
+#      If no number is found at the end of the name (e.g., "07_hhstaw_220_bestandsblatt.jpg"), then no test image is created.
+#         
 # Usage:
 #   ./rename_and_copy.sh -d /path/to/root [options]
 #
@@ -106,11 +109,57 @@ process1_single() {
     dir="$1"
     base=$(basename "$dir")
     parent=$(dirname "$dir")
+
+    # Case 0: If folder name has no digits at all (e.g. "bestandsblatt", "findbuch")
+    if [[ ! "$base" =~ [0-9] ]]; then
+        vlog "Skipping folder without numbers: $base"
+        return
+    fi
+
+    # Case A: two-part numbers separated by `--`
+    if [[ "$base" =~ ^([0-9]+)--([0-9]+)$ ]]; then
+        num1=$(pad_number "${BASH_REMATCH[1]}")
+        num2=$(printf "%03d" "${BASH_REMATCH[2]}")
+        padded="${num1}--${num2}"
+        if [ "$base" != "$padded" ]; then
+            run_cmd mv "$dir" "$parent/$padded"
+            log "Renamed folder (two-part --): $dir → $parent/$padded"
+        fi
+        return
+    fi
+
+    # Case B: prefix + number + text + number (e.g., frankfurt_148_bd._18)
+    if [[ "$base" =~ ^(.*?)([0-9]+)([^0-9]+)([0-9]+)$ ]]; then
+        prefix="${BASH_REMATCH[1]}"
+        num1="${BASH_REMATCH[2]}"
+        middle="${BASH_REMATCH[3]}"
+        num2="${BASH_REMATCH[4]}"
+        padded="${prefix}$(pad_number "$num1")${middle}$(printf "%03d" "$num2")"
+        if [ "$base" != "$padded" ]; then
+            run_cmd mv "$dir" "$parent/$padded"
+            log "Renamed folder (two-part w/ text): $dir → $parent/$padded"
+        fi
+        return
+    fi
+
+    # Case C: prefix + number only (e.g., frankfurt128, p_ii_138)
+    if [[ "$base" =~ ^(.*?)([0-9]+)$ ]]; then
+        prefix="${BASH_REMATCH[1]}"
+        num="${BASH_REMATCH[2]}"
+        padded="${prefix}$(pad_number "$num")"
+        if [ "$base" != "$padded" ]; then
+            run_cmd mv "$dir" "$parent/$padded"
+            log "Renamed folder (prefix+num): $dir → $parent/$padded"
+        fi
+        return
+    fi
+
+    # Case D: pure digits (fallback)
     if [[ "$base" =~ ^[0-9]+$ ]]; then
         padded=$(pad_number "$base")
         if [ "$base" != "$padded" ]; then
             run_cmd mv "$dir" "$parent/$padded"
-            log "Renamed folder: $dir → $parent/$padded"
+            log "Renamed folder (pure digits): $dir → $parent/$padded"
         fi
     fi
 }
@@ -162,15 +211,26 @@ process2() {
 
 process3_single() {
     dir="$1"
-    first_file=$(ls "$dir" | sort | head -n1)
-    if [ -n "$first_file" ]; then
-        if [[ "$first_file" =~ (.*_)([0-9]+)(\.[^.]+)$ ]]; then
-            prefix="${BASH_REMATCH[1]}"
-            ext="${BASH_REMATCH[3]}"
-            newname="$dir/${prefix}00000${ext}"
-            run_cmd cp "$TESTCHART" "$newname"
-            log "Copied testchart into: $newname"
-        fi
+    testchart_src="/pfad/zum/TESTCHART.jpg"   # reference image
+
+    # find first file in dir
+    first_file=$(find "$dir" -maxdepth 1 -type f | head -n 1)
+    [ -z "$first_file" ] && return
+
+    filename=$(basename "$first_file")
+    extension="${filename##*.}"
+
+    # catch the number from filename
+    if [[ "$filename" =~ ^(.*_)([0-9]+)\.[^.]+$ ]]; then
+        prefix="${BASH_REMATCH[1]}"
+        num="${BASH_REMATCH[2]}"
+
+        # testchart will be renamed
+        newfile="${dir}/${prefix}00000.${extension}"
+
+        # Copy
+        run_cmd cp "$testchart_src" "$newfile"
+        log "Added TESTCHART: $newfile"
     fi
 }
 
