@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: ausbelichtung_rename_and_copy.sh Version:2.3
+# Script Name: ausbelichtung_rename_and_copy.sh Version:2.4
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -122,7 +122,7 @@ process1_single() {
         num2=$(printf "%03d" "${BASH_REMATCH[2]}")
         padded="${num1}--${num2}"
         if [ "$base" != "$padded" ]; then
-            run_cmd mv "$dir" "$parent/$padded"
+            run_cmd mv "\"$dir\"" "\"$parent/$padded\""
             log "Renamed folder (two-part --): $dir → $parent/$padded"
         fi
         return
@@ -136,7 +136,7 @@ process1_single() {
         num2="${BASH_REMATCH[4]}"
         padded="${prefix}$(pad_number "$num1")${middle}$(printf "%03d" "$num2")"
         if [ "$base" != "$padded" ]; then
-            run_cmd mv "$dir" "$parent/$padded"
+            run_cmd mv "\"$dir\"" "\"$parent/$padded\""
             log "Renamed folder (two-part w/ text): $dir → $parent/$padded"
         fi
         return
@@ -148,7 +148,7 @@ process1_single() {
         num="${BASH_REMATCH[2]}"
         padded="${prefix}$(pad_number "$num")"
         if [ "$base" != "$padded" ]; then
-            run_cmd mv "$dir" "$parent/$padded"
+            run_cmd mv "\"$dir\"" "\"$parent/$padded\""
             log "Renamed folder (prefix+num): $dir → $parent/$padded"
         fi
         return
@@ -158,16 +158,19 @@ process1_single() {
     if [[ "$base" =~ ^[0-9]+$ ]]; then
         padded=$(pad_number "$base")
         if [ "$base" != "$padded" ]; then
-            run_cmd mv "$dir" "$parent/$padded"
+            run_cmd mv "\"$dir\"" "\"$parent/$padded\""
             log "Renamed folder (pure digits): $dir → $parent/$padded"
         fi
     fi
 }
 
+export -f process1_single pad_number run_cmd log vlog
+export VERBOSE DRY_RUN LOG_FILE
+
 process1() {
     vlog "Process 1: Renaming lowest-level folders"
     if $PARALLEL; then
-        get_lowest_dirs | xargs -n1 -P"$(nproc 2>/dev/null || echo 4)" -I{} bash -c 'process1_single "$@"' _ {}
+        get_lowest_dirs | xargs -P"$(nproc 2>/dev/null || echo 4)" -I{} bash -c 'process1_single "{}"'
     else
         get_lowest_dirs | while read -r dir; do
             process1_single "$dir"
@@ -189,17 +192,19 @@ process2_single() {
             padded=$(pad_number "$num")
             newname="$dir/${prefix}${padded}${ext}"
             if [ "$file" != "$newname" ]; then
-                run_cmd mv "$file" "$newname"
+                run_cmd mv "\"$file\"" "\"$newname\""
                 log "Renamed file: $file → $newname"
             fi
         fi
     done
 }
 
+export -f process2_single
+
 process2() {
     vlog "Process 2: Renaming files inside lowest-level folders"
     if $PARALLEL; then
-        get_lowest_dirs | xargs -n1 -P"$(nproc 2>/dev/null || echo 4)" -I{} bash -c 'process2_single "$@"' _ {}
+        get_lowest_dirs | xargs -P"$(nproc 2>/dev/null || echo 4)" -I{} bash -c 'process2_single "{}"'
     else
         get_lowest_dirs | while read -r dir; do
             process2_single "$dir"
@@ -211,8 +216,7 @@ process2() {
 
 process3_single() {
     dir="$1"
-    testchart_src="/pfad/zum/TESTCHART.jpg"   # reference image
-
+    
     # find first file in dir
     first_file=$(find "$dir" -maxdepth 1 -type f | head -n 1)
     [ -z "$first_file" ] && return
@@ -229,10 +233,13 @@ process3_single() {
         newfile="${dir}/${prefix}00000.${extension}"
 
         # Copy
-        run_cmd cp "$testchart_src" "$newfile"
+        run_cmd cp "\"$TESTCHART\"" "\"$newfile\""
         log "Added TESTCHART: $newfile"
     fi
 }
+
+export -f process3_single
+export TESTCHART
 
 process3() {
     vlog "Process 3: Copying testchart into lowest-level folders"
@@ -241,7 +248,7 @@ process3() {
         exit 1
     fi
     if $PARALLEL; then
-        get_lowest_dirs | xargs -n1 -P"$(nproc 2>/dev/null || echo 4)" -I{} bash -c 'process3_single "$@"' _ {}
+        get_lowest_dirs | xargs -P"$(nproc 2>/dev/null || echo 4)" -I{} bash -c 'process3_single "{}"'
     else
         get_lowest_dirs | while read -r dir; do
             process3_single "$dir"
