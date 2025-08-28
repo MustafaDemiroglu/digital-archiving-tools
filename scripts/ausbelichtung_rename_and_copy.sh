@@ -116,6 +116,16 @@ process1_single() {
         return
     fi
 
+    # Case D: pure digits (check this FIRST to avoid regex conflicts)
+    if [[ "$base" =~ ^[0-9]+$ ]]; then
+        padded=$(pad_number "$base")
+        if [ "$base" != "$padded" ]; then
+            run_cmd mv "\"$dir\"" "\"$parent/$padded\""
+            log "Renamed folder (pure digits): $dir → $parent/$padded"
+        fi
+        return
+    fi
+
     # Case A: two-part numbers separated by `--`
     if [[ "$base" =~ ^([0-9]+)--([0-9]+)$ ]]; then
         num1=$(pad_number "${BASH_REMATCH[1]}")
@@ -142,8 +152,8 @@ process1_single() {
         return
     fi
 
-    # Case C: prefix + number only (e.g., frankfurt128, p_ii_138)
-    if [[ "$base" =~ ^(.*?)([0-9]+)$ ]]; then
+    # Case C: prefix + number only (e.g., frankfurt128, p_ii_138) - but NOT pure digits
+    if [[ "$base" =~ ^(.*[^0-9])([0-9]+)$ ]]; then
         prefix="${BASH_REMATCH[1]}"
         num="${BASH_REMATCH[2]}"
         padded="${prefix}$(pad_number "$num")"
@@ -152,15 +162,6 @@ process1_single() {
             log "Renamed folder (prefix+num): $dir → $parent/$padded"
         fi
         return
-    fi
-
-    # Case D: pure digits (fallback)
-    if [[ "$base" =~ ^[0-9]+$ ]]; then
-        padded=$(pad_number "$base")
-        if [ "$base" != "$padded" ]; then
-            run_cmd mv "\"$dir\"" "\"$parent/$padded\""
-            log "Renamed folder (pure digits): $dir → $parent/$padded"
-        fi
     fi
 }
 
@@ -217,25 +218,32 @@ process2() {
 process3_single() {
     dir="$1"
     
-    # find first file in dir
-    first_file=$(find "$dir" -maxdepth 1 -type f | head -n 1)
-    [ -z "$first_file" ] && return
+    # find first file in dir that matches the pattern we expect
+    for file in "$dir"/*; do
+        [ -f "$file" ] || continue
+        filename=$(basename "$file")
+        
+        # catch the number from filename - look for files that end with a number
+        if [[ "$filename" =~ ^(.*_)([0-9]+)(\.[^.]+)$ ]]; then
+            prefix="${BASH_REMATCH[1]}"
+            num="${BASH_REMATCH[2]}"
+            extension="${BASH_REMATCH[3]}"
 
-    filename=$(basename "$first_file")
-    extension="${filename##*.}"
-
-    # catch the number from filename
-    if [[ "$filename" =~ ^(.*_)([0-9]+)\.[^.]+$ ]]; then
-        prefix="${BASH_REMATCH[1]}"
-        num="${BASH_REMATCH[2]}"
-
-        # testchart will be renamed
-        newfile="${dir}/${prefix}00000.${extension}"
-
-        # Copy
-        run_cmd cp "\"$TESTCHART\"" "\"$newfile\""
-        log "Added TESTCHART: $newfile"
-    fi
+            # testchart will be renamed
+            newfile="${dir}/${prefix}00000${extension}"
+            
+            # Only create if it doesn't already exist
+            if [ ! -f "$newfile" ]; then
+                run_cmd cp "\"$TESTCHART\"" "\"$newfile\""
+                log "Added TESTCHART: $newfile"
+            else
+                vlog "TESTCHART already exists: $newfile"
+            fi
+            return  # Only process one file per directory
+        fi
+    done
+    
+    vlog "No suitable files found in $dir for testchart creation"
 }
 
 export -f process3_single
