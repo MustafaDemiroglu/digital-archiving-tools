@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: ausbelichtung_rename_and_copy.sh Version:2.4
+# Script Name: ausbelichtung_rename_and_copy.sh Version:2.3
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -96,7 +96,7 @@ ask_process_selection() {
 }
 
 pad_number() {
-    printf "%05d" "$1"
+    printf "%05d" "$((10#$1))"
 }
 
 get_lowest_dirs() {
@@ -129,7 +129,7 @@ process1_single() {
     # Case A: two-part numbers separated by `--`
     if [[ "$base" =~ ^([0-9]+)--([0-9]+)$ ]]; then
         num1=$(pad_number "${BASH_REMATCH[1]}")
-        num2=$(printf "%03d" "${BASH_REMATCH[2]}")
+        num2=$(printf "%03d" "$((10#${BASH_REMATCH[2]}))")
         padded="${num1}--${num2}"
         if [ "$base" != "$padded" ]; then
             run_cmd mv "\"$dir\"" "\"$parent/$padded\""
@@ -144,7 +144,7 @@ process1_single() {
         num1="${BASH_REMATCH[2]}"
         middle="${BASH_REMATCH[3]}"
         num2="${BASH_REMATCH[4]}"
-        padded="${prefix}$(pad_number "$num1")${middle}$(printf "%03d" "$num2")"
+        padded="${prefix}$(pad_number "$num1")${middle}$(printf "%03d" "$((10#$num2))")"
         if [ "$base" != "$padded" ]; then
             run_cmd mv "\"$dir\"" "\"$parent/$padded\""
             log "Renamed folder (two-part w/ text): $dir → $parent/$padded"
