@@ -41,7 +41,7 @@
 
 # ----------------------------- CONFIGURATION ---------------------------------
 
-TESTCHART="/media/cepheus/ingest/testcharts_bestandsblatt/_0000.jpg"
+TESTCHART="/media/cepheus/ingest/testcharts_bestandsblatt/testcharts/_0000.jpg"
 SCRIPT_NAME=$(basename "$0")
 DATE_TAG=$(date +"%Y%m%d_%H%M%S")
 LOG_FILE="log_${SCRIPT_NAME%.*}_${DATE_TAG}.txt"
