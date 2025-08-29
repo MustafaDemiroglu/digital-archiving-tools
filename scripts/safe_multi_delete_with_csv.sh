@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: safe_multi_delete_with_csv.sh (v.3.0)
+# Script Name: safe_multi_delete_with_csv.sh (v.3.2)
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -94,11 +94,22 @@ line_count=0
 deleted_count=0
 failed_count=0
 
+echo "Processing file..."
+log_msg "Starting to process file line by line"
+
 while IFS= read -r line || [[ -n "$line" ]]; do
     ((line_count++))
     
+    # Debug: show what we're processing
+    if $VERBOSE; then
+        echo "Processing line $line_count: $line"
+    fi
+    
     # Skip empty lines
-    [[ -z "$line" ]] && continue
+    if [[ -z "$line" ]]; then
+        log_msg "Skipping empty line $line_count"
+        continue
+    fi
     
     # Try different separators: tab, semicolon, comma
     filepath=""
@@ -122,14 +133,22 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     filepath=$(echo "$filepath" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/^"//;s/"$//')
     action=$(echo "$action" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/^"//;s/"$//')
     
+    if $VERBOSE; then
+        echo "  -> Filepath: '$filepath', Action: '$action'"
+    fi
+    
     # Skip header lines
     if [[ "$filepath" == *"Dateipfad"* ]] || [[ "$filepath" == *"Path"* ]] || [[ "$line_count" -eq 1 ]]; then
-        log_msg "Skipping header line"
+        log_msg "Skipping header line $line_count"
+        if $VERBOSE; then
+            echo "  -> Skipping header line"
+        fi
         continue
     fi
     
     # Skip if no filepath
     if [[ -z "$filepath" ]]; then
+        log_msg "Skipping line $line_count: empty filepath"
         continue
     fi
     
@@ -140,9 +159,13 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     
     # Check if action is delete
     if [[ "${action,,}" == "delete" ]]; then
+        if $VERBOSE; then
+            echo "  -> File marked for deletion: $filepath"
+        fi
         if $DRYRUN; then
             echo "[DRY-RUN] Would delete: $filepath"
             log_msg "DRY-RUN: Would delete $filepath"
+            ((deleted_count++))
         else
             if [[ -f "$filepath" ]]; then
                 if rm -f "$filepath" 2>/dev/null; then
@@ -160,6 +183,9 @@ while IFS= read -r line || [[ -n "$line" ]]; do
             fi
         fi
     else
+        if $VERBOSE; then
+            echo "  -> Skipping (not marked for deletion): $filepath"
+        fi
         log_msg "Skipping (not marked for deletion): $filepath"
     fi
     
