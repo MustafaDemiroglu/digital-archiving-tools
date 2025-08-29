@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: safe_multi_delete_with_csv.sh (v.2.1)
+# Script Name: safe_multi_delete_with_csv.sh (v.2.2)
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -152,20 +152,152 @@ delete_file() {
     fi
 }
 
-process_file_sequential() {
-    local line f todo normalized_path
-    local line_num=0
-    local files_processed=0
-    local files_deleted=0
-    local files_failed=0
+parse_csv_line() {
+    local line="$1"
+    local separator="$2"
+    local f todo
     
+    if [[ "$separator" == "tab" ]]; then
+        f=$(echo "$line" | cut -d
+
+process_file_parallel() {
+    local temp_file=$(mktemp)
+    local files_to_delete=0
+    local separator
+    
+    # Detect separator
+    separator=$(detect_separator "$FILE")
+    log "Detected separator for parallel processing: $separator"
+    echo "Detected CSV separator: $separator"
+    
+    # Extract files marked for deletion
+    local line_num=0
     while IFS= read -r line || [[ -n "$line" ]]; do
         ((line_num++))
-        
-        # Skip empty lines
         [[ -z "$line" ]] && continue
         
-        # Parse CSV line (handle both semicolon and comma separators)
+        # Parse CSV line
+        local parsed_result f todo
+        parsed_result=$(parse_csv_line "$line" "$separator")
+        f=$(echo "$parsed_result" | cut -d'|' -f1)
+        todo=$(echo "$parsed_result" | cut -d'|' -f2)
+        
+        # Skip header
+        if [[ "$f" == *"Dateipfad"* ]] || [[ "$f" == *"Path"* ]] || [[ "$f" == *"File"* ]] || [[ "$line_num" -eq 1 ]]; then
+            continue
+        fi
+        
+        # Skip if no filename
+        if [[ -z "$f" ]]; then
+            continue
+        fi
+        
+        if [[ "${todo,,}" == "delete" ]]; then
+            normalized_path=$(normalize_path "$f")
+            echo "$normalized_path" >> "$temp_file"
+            ((files_to_delete++))
+        fi
+    done < "$FILE"
+    
+    if [[ $files_to_delete -eq 0 ]]; then
+        echo "No files marked for deletion found."
+        rm -f "$temp_file"
+        return 0
+    fi
+    
+    echo "Processing $files_to_delete files in parallel..."
+    log "Starting parallel processing of $files_to_delete files"
+    
+    # Process files in parallel
+    export -f delete_file log error_log
+    export DRYRUN VERBOSE LOG_FILE ERROR_FILE
+    
+    cat "$temp_file" | xargs -I {} -P "$(nproc 2>/dev/null || echo 4)" bash -c 'delete_file "$1"' -- {}
+    
+    rm -f "$temp_file"
+    log "Parallel processing completed"
+}
+
+# --- Parse args --------------------------------------------------------------
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -f|--file) FILE="$2"; shift 2 ;;
+        -n|--dry-run) DRYRUN=true; shift ;;
+        -p|--parallel) PARALLEL=true; shift ;;
+        -v|--verbose) VERBOSE=true; shift ;;
+        -h|--help) print_help; exit 0 ;;
+        *) echo "Unknown option: $1"; print_help; exit 1 ;;
+    esac
+done
+
+# --- Main --------------------------------------------------------------------
+choose_file_if_missing
+
+echo "Using file: $FILE"
+
+# Initialize log files
+if $DRYRUN; then
+    echo "# DRY RUN MODE" > "$LOG_FILE"
+    echo "# This is a dry run. No actual changes will be made." >> "$LOG_FILE"
+    echo "# Run without -n/--dry-run to see actual results." >> "$LOG_FILE"
+    echo "# =================================================" >> "$LOG_FILE"
+    echo "" >> "$LOG_FILE"
+else
+    echo "# File Deletion Log" > "$LOG_FILE"
+    echo "# Generated on: $(date)" >> "$LOG_FILE"
+    echo "# =================================================" >> "$LOG_FILE"
+    echo "" >> "$LOG_FILE"
+fi
+
+log "Script started with file: $FILE"
+log "Current working directory: $CURRENT_DIR"
+log "Dry run mode: $DRYRUN"
+log "Verbose mode: $VERBOSE"
+log "Parallel mode: $PARALLEL"
+
+# Debug: Show first few lines of CSV file
+echo "Analyzing CSV file structure..."
+log "First 3 lines of CSV file:"
+head -n 3 "$FILE" | while IFS= read -r line; do
+    log "CSV Line: '$line'"
+done
+
+# Confirm deletion if not dry run
+if ! $DRYRUN; then
+    if ! ask_confirmation "Proceed with deletion from $FILE?"; then
+        echo "Aborted by user."
+        log "Operation aborted by user"
+        exit 1
+    fi
+fi
+
+# Process files
+if $PARALLEL; then
+    log "Running in parallel mode"
+    process_file_parallel
+else
+    log "Running in sequential mode"
+    process_file_sequential
+fi
+
+echo "Done."
+echo "Log file: $LOG_FILE"
+if [[ -f "$ERROR_FILE" ]] && [[ -s "$ERROR_FILE" ]]; then
+    echo "Error file: $ERROR_FILE"
+fi
+
+log "Script completed successfully"\t' -f1)
+        todo=$(echo "$line" | cut -d
+
+process_file_parallel() {
+    local temp_file=$(mktemp)
+    local files_to_delete=0
+    
+    # Extract files marked for deletion
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -z "$line" ]] && continue
+        
+        local f todo
         if [[ "$line" == *";"* ]]; then
             f=$(echo "$line" | cut -d';' -f1)
             todo=$(echo "$line" | cut -d';' -f2)
@@ -173,13 +305,153 @@ process_file_sequential() {
             f=$(echo "$line" | cut -d',' -f1)
             todo=$(echo "$line" | cut -d',' -f2)
         else
-            log "Skipping malformed line $line_num: $line"
             continue
         fi
         
-        # Skip header line
+        # Skip header
         if [[ "$f" == *"Dateipfad"* ]] || [[ "$f" == *"Path"* ]] || [[ "$f" == *"File"* ]]; then
+            continue
+        fi
+        
+        if [[ "${todo,,}" == "delete" ]]; then
+            normalized_path=$(normalize_path "$f")
+            echo "$normalized_path" >> "$temp_file"
+            ((files_to_delete++))
+        fi
+    done < "$FILE"
+    
+    if [[ $files_to_delete -eq 0 ]]; then
+        echo "No files marked for deletion found."
+        rm -f "$temp_file"
+        return 0
+    fi
+    
+    echo "Processing $files_to_delete files in parallel..."
+    log "Starting parallel processing of $files_to_delete files"
+    
+    # Process files in parallel
+    export -f delete_file log error_log
+    export DRYRUN VERBOSE LOG_FILE ERROR_FILE
+    
+    cat "$temp_file" | xargs -I {} -P "$(nproc 2>/dev/null || echo 4)" bash -c 'delete_file "$1"' -- {}
+    
+    rm -f "$temp_file"
+    log "Parallel processing completed"
+}
+
+# --- Parse args --------------------------------------------------------------
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -f|--file) FILE="$2"; shift 2 ;;
+        -n|--dry-run) DRYRUN=true; shift ;;
+        -p|--parallel) PARALLEL=true; shift ;;
+        -v|--verbose) VERBOSE=true; shift ;;
+        -h|--help) print_help; exit 0 ;;
+        *) echo "Unknown option: $1"; print_help; exit 1 ;;
+    esac
+done
+
+# --- Main --------------------------------------------------------------------
+choose_file_if_missing
+
+echo "Using file: $FILE"
+
+# Initialize log files
+if $DRYRUN; then
+    echo "# DRY RUN MODE" > "$LOG_FILE"
+    echo "# This is a dry run. No actual changes will be made." >> "$LOG_FILE"
+    echo "# Run without -n/--dry-run to see actual results." >> "$LOG_FILE"
+    echo "# =================================================" >> "$LOG_FILE"
+    echo "" >> "$LOG_FILE"
+else
+    echo "# File Deletion Log" > "$LOG_FILE"
+    echo "# Generated on: $(date)" >> "$LOG_FILE"
+    echo "# =================================================" >> "$LOG_FILE"
+    echo "" >> "$LOG_FILE"
+fi
+
+log "Script started with file: $FILE"
+log "Current working directory: $CURRENT_DIR"
+log "Dry run mode: $DRYRUN"
+log "Verbose mode: $VERBOSE"
+log "Parallel mode: $PARALLEL"
+
+# Confirm deletion if not dry run
+if ! $DRYRUN; then
+    if ! ask_confirmation "Proceed with deletion from $FILE?"; then
+        echo "Aborted by user."
+        log "Operation aborted by user"
+        exit 1
+    fi
+fi
+
+# Process files
+if $PARALLEL; then
+    log "Running in parallel mode"
+    process_file_parallel
+else
+    log "Running in sequential mode"
+    process_file_sequential
+fi
+
+echo "Done."
+echo "Log file: $LOG_FILE"
+if [[ -f "$ERROR_FILE" ]] && [[ -s "$ERROR_FILE" ]]; then
+    echo "Error file: $ERROR_FILE"
+fi
+
+log "Script completed successfully"\t' -f2)
+    else
+        f=$(echo "$line" | cut -d"$separator" -f1)
+        todo=$(echo "$line" | cut -d"$separator" -f2)
+    fi
+    
+    # Clean up whitespace and quotes
+    f=$(echo "$f" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/^"//;s/"$//')
+    todo=$(echo "$todo" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/^"//;s/"$//')
+    
+    echo "$f|$todo"
+}
+
+process_file_sequential() {
+    local line f todo normalized_path
+    local line_num=0
+    local files_processed=0
+    local files_deleted=0
+    local files_failed=0
+    local separator
+    
+    # Detect separator
+    separator=$(detect_separator "$FILE")
+    log "Detected separator: $separator"
+    echo "Detected CSV separator: $separator"
+    
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        ((line_num++))
+        
+        # Skip empty lines
+        [[ -z "$line" ]] && continue
+        
+        # Parse CSV line
+        local parsed_result
+        parsed_result=$(parse_csv_line "$line" "$separator")
+        f=$(echo "$parsed_result" | cut -d'|' -f1)
+        todo=$(echo "$parsed_result" | cut -d'|' -f2)
+        
+        # Debug output for first few lines
+        if [[ $line_num -le 5 ]]; then
+            log "Line $line_num: '$line' -> File: '$f', Todo: '$todo'"
+        fi
+        
+        # Skip header line
+        if [[ "$f" == *"Dateipfad"* ]] || [[ "$f" == *"Path"* ]] || [[ "$f" == *"File"* ]] || [[ "$line_num" -eq 1 ]]; then
             log "Skipping header line: $line"
+            continue
+        fi
+        
+        # Skip if no filename
+        if [[ -z "$f" ]]; then
+            log "Skipping empty filename at line $line_num"
             continue
         fi
         
@@ -189,13 +461,14 @@ process_file_sequential() {
         
         # Check if we should delete
         if [[ "${todo,,}" == "delete" ]]; then
+            log "Processing file for deletion: $normalized_path"
             if delete_file "$normalized_path"; then
                 ((files_deleted++))
             else
                 ((files_failed++))
             fi
         else
-            log "Skipping (not marked for deletion): $normalized_path"
+            log "Skipping (not marked for deletion): $normalized_path (todo: '$todo')"
         fi
     done < "$FILE"
     
