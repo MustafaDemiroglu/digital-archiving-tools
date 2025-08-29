@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: safe_multi_delete_with_csv.sh (v.3.2)
+# Script Name: safe_multi_delete_with_csv.sh (v.3.3)
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -82,10 +82,20 @@ head -n 3 "$FILE"
 
 # Ask for confirmation if not dry run
 if ! $DRYRUN; then
+    echo "[INFO] Asking for user confirmation to proceed with deletion..."
     read -p "Proceed with deletion? [y/N]: " answer
+    if [[ -z "$answer" ]]; then
+        echo "[INFO] No input received, using default 'n'."
+        answer="n"
+    fi
     case "$answer" in
-        [yY]|[yY][eE][sS]) ;;
-        *) echo "Aborted."; exit 0 ;;
+        [yY]|[yY][eE][sS]) 
+            echo "[INFO] Proceeding with deletion."
+            ;;
+        *) 
+            echo "[INFO] Deletion aborted."
+            exit 0
+            ;;
     esac
 fi
 
@@ -115,6 +125,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     filepath=""
     action=""
     
+    # Check for tab, semicolon, or comma separation
     if [[ "$line" == *$'\t'* ]]; then
         filepath=$(echo "$line" | cut -d$'\t' -f1)
         action=$(echo "$line" | cut -d$'\t' -f2)
@@ -125,7 +136,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
         filepath=$(echo "$line" | cut -d',' -f1)
         action=$(echo "$line" | cut -d',' -f2)
     else
-        log_msg "Skipping line $line_count: no separator found"
+        log_msg "Skipping line $line_count: no separator found (line content: '$line')"
         continue
     fi
     
