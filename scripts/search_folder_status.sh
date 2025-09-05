@@ -2,16 +2,13 @@
 
 ###############################################################################
 # Script Name : search_folder_status.sh
-# Version     : 1.8
+# Version     : 2.0
 # Author      : Mustafa Demiroglu
 # Purpose     : 
-#   This script checks if the folders listed in a file exist under /media/cepheus.
+#   This script checks if the folders listed in a file exist under a chosen base path.
 #   You can choose a file with .csv, .txt, or .list extension.
-# Short explanations:
-#   The script lets you pick a file with folder names/paths.
-#   Only files with .csv, .txt, or .list extensions can be selected.
-#   It checks if each folder exists under /media/cepheus.
-#   Results are saved to search_result.csv with two columns: folder path and status.
+#   It collects extended information about existing folders (creation date, file count,
+#   file types, and file creation dates).
 ###############################################################################
 
 # Function to remove spaces and special characters from start and end
@@ -19,10 +16,37 @@ trim() {
   echo -n "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/\r//g'
 }
 
-# If no file name is given, let user select a correct file type
+# Step 1: Ask user for base path
+echo "Please choose the base directory for the search:"
+PS3="Enter the number of your choice: "
+options=("/media/cepheus" "/media/archive/public/www" "Custom path")
+select opt in "${options[@]}"; do
+  case $opt in
+    "/media/cepheus")
+      base_path="/media/cepheus"
+      break
+      ;;
+    "/media/archive/public/www")
+      base_path="/media/archive/public/www"
+      break
+      ;;
+    "Custom path")
+      read -rp "Enter your custom base path: " base_path
+      if [[ ! -d "$base_path" ]]; then
+        echo "Path '$base_path' not found. Exiting."
+        exit 1
+      fi
+      break
+      ;;
+    *)
+      echo "Invalid choice. Please try again."
+      ;;
+  esac
+done
+
+# Step 2: If no file name is given, let user select a correct file type
 if [[ -z "$1" ]]; then
   echo "No file given. Showing only CSV, TXT, or LIST files in this folder:"
-  # Only show files with these extensions (not case-sensitive)
   mapfile -t files < <(find . -maxdepth 1 -type f \( -iname "*.csv" -o -iname "*.txt" -o -iname "*.list" \) -printf "%f\n")
   if [[ ${#files[@]} -eq 0 ]]; then
     echo "No CSV, TXT, or LIST files found in this directory."
@@ -44,36 +68,40 @@ else
   fi
 fi
 
-# Clear any previous result file, so we start fresh
+# Step 3: Prepare result file
 > search_result.csv
+echo "Folder Path;Status;Creation Date;File Count;File Types;File Creation Dates" > search_result.csv
 
-# Write the header line to the result file (comma separated)
-echo "Folder Path;Status" > search_result.csv
-
-# Read each line in the input file
+# Step 4: Process each line in the input file
 while IFS= read -r line || [[ -n "$line" ]]; do
-  # Remove any unwanted spaces and special characters from the line
   folder_path=$(trim "$line")
-  
-  # Skip if the line is empty
+
+  # Skip empty lines
   if [[ -z "$folder_path" ]]; then
     continue
   fi
 
-  # Full path for the directory
-  full_path="/media/cepheus/$folder_path"
-  
-  # Show which folder is being checked
+  full_path="$base_path/$folder_path"
   echo -ne "\rSearching: $folder_path                                "
-  
-  # Check if folder exists
-  if [[ -d "$full_path" ]]; then
-    echo -e "$folder_path;exist" >> search_result.csv
-  else
-    echo -e "$folder_path;not_exist" >> search_result.csv
-  fi
 
+  if [[ -d "$full_path" ]]; then
+    # Get creation date of the folder
+    creation_date=$(stat -c %w "$full_path" 2>/dev/null)
+    [[ "$creation_date" == "-" ]] && creation_date=$(stat -c %y "$full_path" | cut -d' ' -f1)
+
+    # Get number of files inside
+    file_count=$(find "$full_path" -type f | wc -l)
+
+    # Get file types (extensions, unique, separated by _)
+    file_types=$(find "$full_path" -type f -printf "%f\n" | sed -n 's/.*\.//p' | sort -u | tr '\n' '_' | sed 's/_$//')
+
+    # Get file creation dates (unique, separated by _)
+    file_dates=$(find "$full_path" -type f -printf "%TY-%Tm-%Td\n" 2>/dev/null | sort -u | tr '\n' '_' | sed 's/_$//')
+
+    echo -e "$folder_path;exist;$creation_date;$file_count;$file_types;$file_dates" >> search_result.csv
+  else
+    echo -e "$folder_path;not_exist;;;;" >> search_result.csv
+  fi
 done < "$input_file"
 
-# Print finish message
 echo -e "\rSearch complete. Results saved to search_result.csv.       "
