@@ -170,7 +170,7 @@ for folder in "${folders[@]}"; do
   echo "$folder_clean;${meta_self};$status_cepheus;${meta_cepheus};$status_nutzung;${meta_nutzung};$eval_text" >> "$output_file"
 
   # Show progress every 10 folders
-  if (( counter % 100 == 0 )); then
+  if (( counter % 10 == 0 )); then
     echo "Processed $counter / $total folders..."
   fi
 done
