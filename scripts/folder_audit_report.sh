@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_audit_report.sh
-# Version     : 2.0
+# Version     : 2.2
 # Author      : Mustafa Demiroglu
 # Purpose     : 
 #   This script performs a data stewardship audit of the lowest-level folders
@@ -74,6 +74,12 @@ compare_md5() {
   return $?
 }
 
+# --- Compare metadata sets without creation date ---
+# Strip first field (creation date) before comparison
+strip_creation_date() {
+  echo "$1" | cut -d';' -f2-
+}
+
 # Evaluate differences
 evaluate() {
   local folder="$1"
@@ -84,6 +90,12 @@ evaluate() {
   local meta_self="$6"
   local full_path_cepheus="$7"
 
+  # compare metadata without creation date
+  local meta_cepheus_nc
+  local meta_self_nc
+  meta_cepheus_nc=$(strip_creation_date "$meta_cepheus")
+  meta_self_nc=$(strip_creation_date "$meta_self")
+
   if [[ "$status_cepheus" == "not_exist" && "$status_nutzung" == "not_exist" ]]; then
     echo "Bereit für Upload – weder in Cepheus noch in NetApp vorhanden"
   elif [[ "$status_cepheus" == "exist" && "$status_nutzung" == "not_exist" ]]; then
@@ -91,11 +103,11 @@ evaluate() {
   elif [[ "$status_cepheus" == "not_exist" && "$status_nutzung" == "exist" ]]; then
     echo "Ordner nur in Nutzung vorhanden – evtl. manuell erstellt"
   elif [[ "$status_cepheus" == "exist" && "$status_nutzung" == "exist" ]]; then
-    if [[ "$meta_cepheus" == "$meta_self" ]]; then
+    if [[ "$meta_cepheus_nc" == "$meta_self_nc" ]]; then
       if compare_md5 "$folder" "$full_path_cepheus"; then
-        echo "Alle Metadaten stimmen überein. MD5 geprüft, kein Zweifel – Ordner sind identisch. Keine Migration nötig."
+        echo "Metadaten (ohne Ordnerdatum) stimmen überein. MD5 geprüft – identisch. Keine Migration nötig."
       else
-        echo "Metadaten gleich, aber Dateien unterscheiden sich (MD5 Abweichungen). Bitte prüfen."
+        echo "Metadaten (ohne Ordnerdatum) gleich, aber Dateien unterscheiden sich (MD5 Abweichungen). Bitte prüfen."
       fi
     else
       echo "Unterschiede zwischen Cepheus und neuer Lieferung (Dateien/Typen/Zeiten weichen ab). Entscheidung erforderlich."
