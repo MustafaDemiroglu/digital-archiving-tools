@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_audit_report.sh
-# Version     : 4.2
+# Version     : 4.3
 # Author      : Mustafa Demiroglu
 # Purpose     : 
 #   This script performs a data stewardship audit of the lowest-level folders
@@ -74,10 +74,26 @@ compare_md5() {
   return $?
 }
 
-# --- Compare metadata sets without creation date ---
-# Strip first field (creation date) before comparison
-strip_creation_date() {
-  echo "$1" | cut -d';' -f2-
+# Compare additional file properties if MD5 is different
+compare_file_properties() {
+  local folder1="$1"
+  local folder2="$2"
+  local file="$3"
+
+  # Compare file size, modification date, and creation date
+  local size1 size2 mtime1 mtime2 ctime1 ctime2
+  size1=$(stat -c %s "$folder1/$file")
+  size2=$(stat -c %s "$folder2/$file")
+  mtime1=$(stat -c %y "$folder1/$file" | cut -d' ' -f1)
+  mtime2=$(stat -c %y "$folder2/$file" | cut -d' ' -f1)
+  ctime1=$(stat -c %w "$folder1/$file" 2>/dev/null || stat -c %y "$folder1/$file" | cut -d' ' -f1)
+  ctime2=$(stat -c %w "$folder2/$file" 2>/dev/null || stat -c %y "$folder2/$file" | cut -d' ' -f1)
+
+  if [[ "$size1" == "$size2" && "$mtime1" == "$mtime2" && "$ctime1" == "$ctime2" ]]; then
+    return 0  # Files are identical based on size, modification, and creation date
+  else
+    return 1  # Files differ based on size or dates
+  fi
 }
 
 # --- Main script ---
@@ -127,8 +143,6 @@ for folder in "${folders[@]}"; do
   fi
 
   # Compare metadata without creation date
-  local meta_cepheus_nc
-  local meta_self_nc
   meta_cepheus_nc=$(strip_creation_date "$meta_cepheus")
   meta_self_nc=$(strip_creation_date "$meta_self")
 
@@ -145,6 +159,7 @@ for folder in "${folders[@]}"; do
       if compare_md5 "$folder" "$full_path_cepheus"; then
         eval_text="Metadaten (ohne Ordnerdatum) stimmen überein. MD5 geprüft – identisch. Keine Migration nötig."
       else
+        # Here is the block you asked for:
         # If MD5 doesn't match, but other properties like name, size, timestamps match
         compare_file_properties "$folder" "$full_path_cepheus" "$folder_clean"
         if [[ $? -eq 0 ]]; then
@@ -154,7 +169,7 @@ for folder in "${folders[@]}"; do
         fi
       fi
     else
-      eval_text="Digitalise im Cepheus vorhanden. Unterschiede zwischen Cepheus und neuer Lieferung (Dateien/Typen/Zeiten weichen ab). Entscheidung erforderlich."
+      eval_text="Unterschiede zwischen Cepheus und neuer Lieferung (Dateien/Typen/Zeiten weichen ab). Entscheidung erforderlich."
     fi
   else
     eval_text="Unbekannter Status – bitte manuell prüfen"
