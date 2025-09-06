@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_audit_report.sh
-# Version     : 3.1
+# Version     : 4.2
 # Author      : Mustafa Demiroglu
 # Purpose     : 
 #   This script performs a data stewardship audit of the lowest-level folders
@@ -80,43 +80,6 @@ strip_creation_date() {
   echo "$1" | cut -d';' -f2-
 }
 
-# Evaluate differences
-evaluate() {
-  local folder="$1"
-  local status_cepheus="$2"
-  local meta_cepheus="$3"
-  local status_nutzung="$4"
-  local meta_nutzung="$5"
-  local meta_self="$6"
-  local full_path_cepheus="$7"
-
-  # compare metadata without creation date
-  local meta_cepheus_nc
-  local meta_self_nc
-  meta_cepheus_nc=$(strip_creation_date "$meta_cepheus")
-  meta_self_nc=$(strip_creation_date "$meta_self")
-
-  if [[ "$status_cepheus" == "not_exist" && "$status_nutzung" == "not_exist" ]]; then
-    echo "Bereit für Upload – weder in Cepheus noch in NetApp vorhanden"
-  elif [[ "$status_cepheus" == "exist" && "$status_nutzung" == "not_exist" ]]; then
-    echo "Digitalisate in Cepheus vorhanden, keine Nutzungskopie"
-  elif [[ "$status_cepheus" == "not_exist" && "$status_nutzung" == "exist" ]]; then
-    echo "Nutzungdigis vorhanden aber Digitalisate nicht – evtl. manuell erstellt"
-  elif [[ "$status_cepheus" == "exist" && "$status_nutzung" == "exist" ]]; then
-    if [[ "$meta_cepheus_nc" == "$meta_self_nc" ]]; then
-      if compare_md5 "$folder" "$full_path_cepheus"; then
-        echo "Metadaten (ohne Ordnerdatum) stimmen überein. MD5 geprüft – identisch. Keine Migration nötig."
-      else
-        echo "Metadaten (ohne Ordnerdatum) gleich, aber Dateien unterscheiden sich (MD5 Abweichungen). Bitte prüfen."
-      fi
-    else
-      echo "Unterschiede zwischen Cepheus und neuer Lieferung (Dateien/Typen/Zeiten weichen ab). Entscheidung erforderlich."
-    fi
-  else
-    echo "Unbekannter Status – bitte manuell prüfen"
-  fi
-}
-
 # --- Main script ---
 
 timestamp=$(date +%Y-%m-%d)
@@ -127,21 +90,21 @@ echo "Folder Path;Creation Date;File Count;File Types;File Creation Dates;Status
 
 # Find all lowest-level folders
 echo "Finding all lowest-level folders..."
-find . -type d ! -exec sh -c 'find "$1" -mindepth 1 -type d | grep -q .' sh {} \; -print | sort > /tmp/folders_list.txt
-
-total=$(wc -l < /tmp/folders_list.txt)
-echo "Total folders found: $total"
-
-mapfile -t folders < /tmp/folders_list.txt
+mapfile -t folders < <(find . -type d ! -exec sh -c 'find "$1" -mindepth 1 -type d | grep -q .' sh {} \; -print | sort)
+total_folders=${#folders[@]}
+processed=0
 
 # Process each folder
 for folder in "${folders[@]}"; do
-  ((counter++))
   folder_clean=$(trim "$folder")
+
+  # Update progress for finding folders
+  processed=$((processed + 1))
+  progress=$((processed * 100 / total_folders))
+  echo -ne "Finding lowest-level folders: $progress% complete\r"
 
   # Metadata self
   meta_self=$(get_metadata "$folder_clean")
-  IFS=";" read -r self_creation self_count self_types self_dates <<< "$meta_self"
 
   # Metadata Cepheus
   full_path_cepheus="/media/cepheus/$folder_clean"
@@ -163,16 +126,46 @@ for folder in "${folders[@]}"; do
     meta_nutzung=";;;"
   fi
 
-  # Evaluation
-  eval_text=$(evaluate "$folder_clean" "$status_cepheus" "$meta_cepheus" "$status_nutzung" "$meta_nutzung" "$meta_self" "$full_path_cepheus")
+  # Compare metadata without creation date
+  local meta_cepheus_nc
+  local meta_self_nc
+  meta_cepheus_nc=$(strip_creation_date "$meta_cepheus")
+  meta_self_nc=$(strip_creation_date "$meta_self")
+
+  # Evaluation process
+  if [[ "$status_cepheus" == "not_exist" && "$status_nutzung" == "not_exist" ]]; then
+    eval_text="Bereit für Upload – weder in Cepheus noch in NetApp vorhanden"
+  elif [[ "$status_cepheus" == "exist" && "$status_nutzung" == "not_exist" ]]; then
+    eval_text="Ordner in Cepheus vorhanden, keine Nutzungskopie"
+  elif [[ "$status_cepheus" == "not_exist" && "$status_nutzung" == "exist" ]]; then
+    eval_text="Ordner nur in Nutzung vorhanden – evtl. manuell erstellt"
+  elif [[ "$status_cepheus" == "exist" && "$status_nutzung" == "exist" ]]; then
+    if [[ "$meta_cepheus_nc" == "$meta_self_nc" ]]; then
+      # MD5 Comparison Block
+      if compare_md5 "$folder" "$full_path_cepheus"; then
+        eval_text="Metadaten (ohne Ordnerdatum) stimmen überein. MD5 geprüft – identisch. Keine Migration nötig."
+      else
+        # If MD5 doesn't match, but other properties like name, size, timestamps match
+        compare_file_properties "$folder" "$full_path_cepheus" "$folder_clean"
+        if [[ $? -eq 0 ]]; then
+          eval_text="Die Datei scheint identisch zu sein (Name, Größe, Erstellungsdatum und Modifikationsdatum stimmen überein, jedoch MD5 abweichend)"
+        else
+          eval_text="Metadaten (ohne Ordnerdatum) gleich, aber Dateien unterscheiden sich (MD5 Abweichungen). Bitte prüfen."
+        fi
+      fi
+    else
+      eval_text="Digitalise im Cepheus vorhanden. Unterschiede zwischen Cepheus und neuer Lieferung (Dateien/Typen/Zeiten weichen ab). Entscheidung erforderlich."
+    fi
+  else
+    eval_text="Unbekannter Status – bitte manuell prüfen"
+  fi
+
+  # Update progress for metadata collection and evaluation
+  echo -ne "Collecting metadata and evaluating differences: $progress% complete\r"
 
   # Write row
   echo "$folder_clean;${meta_self};$status_cepheus;${meta_cepheus};$status_nutzung;${meta_nutzung};$eval_text" >> "$output_file"
-
-  # Show progress every 10 folders
-  if (( counter % 10 == 0 )); then
-    echo "Processed $counter / $total folders..."
-  fi
 done
 
-echo "Audit complete. Results saved to $output_file"
+# Final progress update
+echo -e "\nAudit complete. Results saved to $output_file"
