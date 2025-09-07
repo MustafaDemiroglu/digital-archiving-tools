@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_audit_report.sh
-# Version     : 4.5
+# Version     : 4.6
 # Author      : Mustafa Demiroglu
 # Purpose     : 
 #   This script performs a data stewardship audit of the lowest-level folders
@@ -129,6 +129,10 @@ for folder in "${folders[@]}"; do
   full_path_cepheus="/media/cepheus/$folder_clean"
   full_path_nutzung="/media/archive/public/www/$folder_clean"
 
+  # Remove duplicate path (if any)
+  full_path_cepheus=$(realpath "$full_path_cepheus")
+  full_path_nutzung=$(realpath "$full_path_nutzung")
+
   # Metadata self
   meta_self=$(get_metadata "$folder_clean")
 
@@ -167,9 +171,7 @@ for folder in "${folders[@]}"; do
       if compare_md5 "$folder" "$full_path_cepheus"; then
         eval_text="Metadaten (ohne Ordnerdatum) stimmen überein. MD5 geprüft – identisch. Keine Migration nötig."
       else
-        # If MD5 doesn't match, but other properties like name, size, timestamps match
-        compare_file_properties "$folder" "$full_path_cepheus" "$folder_clean"
-        if [[ $? -eq 0 ]]; then
+        if compare_file_properties "$folder" "$full_path_cepheus" "$folder_clean"; then
           eval_text="Die Datei scheint identisch zu sein (Name, Größe, Erstellungsdatum und Modifikationsdatum stimmen überein, jedoch MD5 abweichend)"
         else
           eval_text="Metadaten (ohne Ordnerdatum) gleich, aber Dateien unterscheiden sich (MD5 Abweichungen). Bitte prüfen."
@@ -182,12 +184,8 @@ for folder in "${folders[@]}"; do
     eval_text="Unbekannter Status – bitte manuell prüfen"
   fi
 
-  # Update progress for metadata collection and evaluation
-  echo -ne "Collecting metadata and evaluating differences: $progress% complete\r"
-
   # Write row
   echo "$folder_clean;${meta_self};$status_cepheus;${meta_cepheus};$status_nutzung;${meta_nutzung};$eval_text" >> "$output_file"
 done
 
-# Final progress update
 echo -e "\nAudit complete. Results saved to $output_file"
