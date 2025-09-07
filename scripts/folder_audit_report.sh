@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_audit_report.sh
-# Version     : 4.4
+# Version     : 4.5
 # Author      : Mustafa Demiroglu
 # Purpose     : 
 #   This script performs a data stewardship audit of the lowest-level folders
@@ -125,11 +125,14 @@ for folder in "${folders[@]}"; do
   progress=$((processed * 100 / total_folders))
   echo -ne "Finding lowest-level folders: $progress% complete\r"
 
+  # Construct the correct paths for each folder
+  full_path_cepheus="/media/cepheus/$folder_clean"
+  full_path_nutzung="/media/archive/public/www/$folder_clean"
+
   # Metadata self
   meta_self=$(get_metadata "$folder_clean")
 
-  # Metadata Cepheus
-  full_path_cepheus="/media/cepheus/$folder_clean"
+  # Check if the folder exists in Cepheus
   if [[ -d "$full_path_cepheus" ]]; then
     status_cepheus="exist"
     meta_cepheus=$(get_metadata "$full_path_cepheus")
@@ -138,8 +141,7 @@ for folder in "${folders[@]}"; do
     meta_cepheus=";;;"
   fi
 
-  # Metadata Nutzung
-  full_path_nutzung="/media/archive/public/www/$folder_clean"
+  # Check if the folder exists in Nutzung
   if [[ -d "$full_path_nutzung" ]]; then
     status_nutzung="exist"
     meta_nutzung=$(get_metadata "$full_path_nutzung")
@@ -165,7 +167,6 @@ for folder in "${folders[@]}"; do
       if compare_md5 "$folder" "$full_path_cepheus"; then
         eval_text="Metadaten (ohne Ordnerdatum) stimmen überein. MD5 geprüft – identisch. Keine Migration nötig."
       else
-        # Here is the block you asked for:
         # If MD5 doesn't match, but other properties like name, size, timestamps match
         compare_file_properties "$folder" "$full_path_cepheus" "$folder_clean"
         if [[ $? -eq 0 ]]; then
