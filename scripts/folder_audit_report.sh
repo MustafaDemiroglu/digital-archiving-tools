@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_audit_report.sh
-# Version     : 4.3
+# Version     : 4.4
 # Author      : Mustafa Demiroglu
 # Purpose     : 
 #   This script performs a data stewardship audit of the lowest-level folders
@@ -94,6 +94,12 @@ compare_file_properties() {
   else
     return 1  # Files differ based on size or dates
   fi
+}
+
+# --- Compare metadata sets without creation date ---
+# Strip first field (creation date) before comparison
+strip_creation_date() {
+  echo "$1" | cut -d';' -f2-
 }
 
 # --- Main script ---
