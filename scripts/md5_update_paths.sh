@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: md5_update_paths.sh (Version 7.2 - Performance Optimized)
+# Script Name: md5_update_paths.sh (Version 8.0)
 #
 # Description:
 #   This script updates MD5 checksum files by changing file paths and names
@@ -200,7 +200,7 @@ build_new_filename() {
     fi
 }
 
-# OPTIMIZED: Load CSV into associative arrays for O(1) lookups
+# Load CSV into associative arrays for O(1) lookups
 load_csv_instructions() {
     local csv_file="$1"
     local csv_type="$2"
@@ -225,12 +225,18 @@ load_csv_instructions() {
             line_count=$((line_count + 1))
             
             if [ "$csv_type" = "simple_rename" ]; then
-                IFS=',' read -r old_path new_path <<< "$line"
+                IFS=$',;\t' read -r old_path new_path <<< "$line"
                 old_path=$(echo "$old_path" | xargs)
                 new_path=$(echo "$new_path" | xargs)
                 
-                [ -z "$old_path" ] || [ -z "$new_path" ] && continue
-                PATH_MAP["$old_path"]="$new_path"
+                # Debug output for troubleshooting
+                [ "$VERBOSE" = true ] && info "Parsing line $line_count: '$old_path' -> '$new_path'"
+                
+                if [ -n "$old_path" ] && [ -n "$new_path" ]; then
+                    PATH_MAP["$old_path"]="$new_path"
+                else
+                    [ "$VERBOSE" = true ] && warning "Skipping invalid line $line_count: $line"
+                fi
             else
                 IFS=$',;\t' read -r src dst newname <<< "$line"
                 src=$(echo "$src" | xargs)
@@ -252,14 +258,25 @@ load_csv_instructions() {
     
     info "Loaded $line_count CSV instructions"
     info "Path updates: ${#PATH_MAP[@]}, Deletions: ${#DELETION_PATHS[@]}"
+
+	# Debug: Show first few mappings if verbose
+    if [ "$VERBOSE" = true ] && [ ${#PATH_MAP[@]} -gt 0 ]; then
+        info "First few path mappings:"
+        local count=0
+        for key in "${!PATH_MAP[@]}"; do
+            info "  '$key' -> '${PATH_MAP[$key]}'"
+            count=$((count + 1))
+            [ $count -ge 3 ] && break
+        done
+    fi
 }
 
-# OPTIMIZED: Single-pass processing of MD5 file
-process_renamed_files_csv_optimized() {
+# Single-pass processing of MD5 file
+process_renamed_files_csv() {
     local md5_file="$1"
     local csv_file="$2"
     
-    info "Processing renamed_files.csv format (full_path_old,full_path_new) - OPTIMIZED"
+    info "Processing renamed_files.csv format (full_path_old,full_path_new)"
     
     # Load CSV instructions
     load_csv_instructions "$csv_file" "simple_rename"
@@ -279,7 +296,7 @@ process_renamed_files_csv_optimized() {
     TOTAL_CHANGES=0
     
     output_and_log "$(printf '=%.0s' {1..60})"
-    info "Starting optimized MD5 file processing..."
+    info "Starting MD5 file processing..."
     
     # Create temporary file for output
     local temp_file
@@ -295,9 +312,12 @@ process_renamed_files_csv_optimized() {
             show_progress $line_num $total_lines
         fi
         
-        if [[ "$md5_line" =~ ^([a-f0-9]{32})[[:space:]]+(.+)$ ]]; then
+        if [[ "$md5_line" =~ ^([a-f0-9A-F]{32})[[:space:]]+(.*[^[:space:]])$ ]]; then
             local hash="${BASH_REMATCH[1]}"
             local file_path="${BASH_REMATCH[2]}"
+            
+            # Debug output
+            [ "$VERBOSE" = true ] && [ $((line_num % 1000)) -eq 0 ] 
             
             # O(1) lookup in associative array
             if [ -n "${PATH_MAP[$file_path]:-}" ]; then
@@ -318,16 +338,16 @@ process_renamed_files_csv_optimized() {
     echo ""
     
     # Save results
-    save_results_optimized "$md5_file" "$backup_file" "$temp_file"
+    save_results "$md5_file" "$backup_file" "$temp_file"
     rm -f "$temp_file"
 }
 
-# OPTIMIZED: Path update processing
-process_path_update_csv_optimized() {
+# Path update processing
+process_path_update_csv() {
     local md5_file="$1"
     local csv_file="$2"
     
-    info "Processing path update CSV format (Source_Pfad,Ziel_Pfad,New_filenames) - OPTIMIZED"
+    info "Processing path update CSV format (Source_Pfad,Ziel_Pfad,New_filenames)"
     
     # Load CSV instructions
     load_csv_instructions "$csv_file" "path_update"
@@ -347,7 +367,7 @@ process_path_update_csv_optimized() {
     TOTAL_CHANGES=0
     
     output_and_log "$(printf '=%.0s' {1..60})"
-    info "Starting optimized MD5 file processing..."
+    info "Starting  MD5 file processing..."
     
     # Create temporary file for output
     local temp_file
@@ -425,11 +445,11 @@ process_path_update_csv_optimized() {
     echo ""
     
     # Save results
-    save_results_optimized "$md5_file" "$backup_file" "$temp_file"
+    save_results "$md5_file" "$backup_file" "$temp_file"
     rm -f "$temp_file"
 }
 
-save_results_optimized() {
+save_results() {
     local md5_file="$1"
     local backup_file="$2"
     local temp_file="$3"
@@ -462,7 +482,7 @@ save_results_optimized() {
     # Create detailed report
     local output_file="md5_update_paths_output_$(date +%Y%m%d_%H%M%S).log"
     {
-        echo "=== MD5 Checksum Path Update Report (OPTIMIZED) ==="
+        echo "=== MD5 Checksum Path Update Report ==="
         echo "Execution time: $(date)"
         echo "Base directory: $BASE_PATH"
         echo "MD5 file: $md5_file"
@@ -594,11 +614,11 @@ process_all_md5_files() {
         TOTAL_CHANGES=0
         PROCESSED_CHANGES=0
         
-        # Process based on selected type - USING OPTIMIZED FUNCTIONS
+        # Process based on selected type - USING FUNCTIONS
         if [ "$csv_processing_type" = "simple_rename" ]; then
-            process_renamed_files_csv_optimized "$md5_file" "$csv_file"
+            process_renamed_files_csv "$md5_file" "$csv_file"
         else
-            process_path_update_csv_optimized "$md5_file" "$csv_file"
+            process_path_update_csv "$md5_file" "$csv_file"
         fi
         
         echo ""
@@ -608,7 +628,7 @@ process_all_md5_files() {
 }
 
 show_main_menu() {
-	output_and_log "${MAGENTA}=== MD5 Update Script - Main Menu (OPTIMIZED) ===${NC}"
+	output_and_log "${MAGENTA}=== MD5 Update Script - Main Menu ===${NC}"
     output_and_log "Please select an operation:"
     output_and_log ""
     output_and_log "1) Standard path update (Source_Pfad,Ziel_Pfad,New_filenames)"
@@ -658,7 +678,7 @@ show_main_menu() {
 # --- MAIN SCRIPT ---
 
 # Welcome message
-output_and_log "${BLUE}=== MD5 Checksum Path Update Script v7.2 (OPTIMIZED) ===${NC}"
+output_and_log "${BLUE}=== MD5 Checksum Path Update Script v7.2 ===${NC}"
 output_and_log "This tool updates file paths in MD5 checksum files without moving actual files."
 output_and_log "Performance optimized for large files (1M+ entries)."
 output_and_log ""
@@ -818,15 +838,15 @@ fi
 # Check MD5 file
 [ ! -r "$MD5_FILE" ] && error_exit "Cannot read MD5 file: $MD5_FILE"
 
-# Process based on operation type - USING OPTIMIZED FUNCTIONS
+# Process based on operation type - USING FUNCTIONS
 case "$OPERATION" in
     1)
-        info "Starting standard path update operation (OPTIMIZED)..."
-        process_path_update_csv_optimized "$MD5_FILE" "$CSV_FILE"
+        info "Starting standard path update operation..."
+        process_path_update_csv "$MD5_FILE" "$CSV_FILE"
         ;;
     2)
-        info "Starting simple filename rename operation (OPTIMIZED)..."
-        process_renamed_files_csv_optimized "$MD5_FILE" "$CSV_FILE"
+        info "Starting simple filename rename operation..."
+        process_renamed_files_csv "$MD5_FILE" "$CSV_FILE"
         ;;
     *)
         error_exit "Unknown operation: $OPERATION"
