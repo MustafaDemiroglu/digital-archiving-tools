@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_audit_report.sh
-# Version     : 6.1
+# Version     : 6.2
 # Author      : Mustafa Demiroglu
 # Purpose     : 
 #   This script performs a data stewardship audit of the lowest-level folders
@@ -68,9 +68,9 @@ get_metadata() {
 compare_md5() {
   local folder1="$1"
   local folder2="$2"
-
-  diff -q <(find "$folder1" -type f -exec md5sum {} + | sort) \
-          <(find "$folder2" -type f -exec md5sum {} + | sort) >/dev/null
+  diff -q \
+    <(cd "$folder1" 2>/dev/null && find . -type f -exec md5sum {} + | sort) \
+    <(cd "$folder2" 2>/dev/null && find . -type f -exec md5sum {} + | sort) >/dev/null
   return $?
 }
 
@@ -85,12 +85,12 @@ compare_file_properties() {
   
   # Compare file size, modification date, and creation date
   local size1 size2 mtime1 mtime2 ctime1 ctime2
-  size1=$(stat -c %s "$folder1/$file")
-  size2=$(stat -c %s "$folder2/$file")
-  mtime1=$(stat -c %y "$folder1/$file" | cut -d' ' -f1)
-  mtime2=$(stat -c %y "$folder2/$file" | cut -d' ' -f1)
-  ctime1=$(stat -c %w "$folder1/$file" 2>/dev/null || stat -c %y "$folder1/$file" | cut -d' ' -f1)
-  ctime2=$(stat -c %w "$folder2/$file" 2>/dev/null || stat -c %y "$folder2/$file" | cut -d' ' -f1)
+  size1=$(stat -c %s "$folder1/$file" 2>/dev/null)
+  size2=$(stat -c %s "$folder2/$file" 2>/dev/null)
+  mtime1=$(stat -c %y "$folder1/$file" 2>/dev/null | cut -d' ' -f1)
+  mtime2=$(stat -c %y "$folder2/$file" 2>/dev/null | cut -d' ' -f1)
+  ctime1=$(stat -c %w "$folder1/$file" 2>/dev/null || stat -c %y "$folder1/$file" 2>/dev/null | cut -d' ' -f1)
+  ctime2=$(stat -c %w "$folder2/$file" 2>/dev/null || stat -c %y "$folder2/$file" 2>/dev/null | cut -d' ' -f1)
 
   if [[ "$size1" == "$size2" && "$mtime1" == "$mtime2" && "$ctime1" == "$ctime2" ]]; then
     return 0  # Files are identical based on size, modification, and creation date
@@ -122,7 +122,7 @@ evaluate() {
   meta_self_nc=$(strip_creation_date "$meta_self")
 
   # Evaluation process
-  if [[ "$status_cepheus" == "not_exist" && "$status_nutzung" == "not_exist" ]]; then
+ if [[ "$status_cepheus" == "not_exist" && "$status_nutzung" == "not_exist" ]]; then
     echo "Bereit für Upload – weder in Cepheus noch in NetApp vorhanden"
   elif [[ "$status_cepheus" == "exist" && "$status_nutzung" == "not_exist" ]]; then
     echo "Prüfen -- Ordner in Cepheus vorhanden aber Digitalisate sind nicht identisch, keine Nutzungskopie"
@@ -130,20 +130,41 @@ evaluate() {
     echo "Prüfen -- Komischerweise: Ordner nur in Nutzung vorhanden – evtl. manuell erstellt"
   elif [[ "$status_cepheus" == "exist" && "$status_nutzung" == "exist" ]]; then
     if [[ "$meta_cepheus_nc" == "$meta_self_nc" ]]; then
-      # MD5 Comparison Block
+      # First: folder-level MD5
       if compare_md5 "$folder" "$full_path_cepheus"; then
         echo "Metadaten (ohne Ordnerdatum) stimmen überein. MD5 geprüft – identisch. Keine Migration nötig."
       else
-        # If MD5 doesn't match, but other properties like name, size, timestamps match
-		# Only compare per file, not whole folder name
+        # Walk all files by relative path and count MD5 differences
+        local diff_md5_cnt=0
+        local same_props_cnt=0
         while IFS= read -r relfile; do
-          compare_file_properties "$folder" "$full_path_cepheus" "$relfile"
-          if [[ $? -eq 0 ]]; then
-            echo "Die Datei scheint identisch zu sein (size and timestamps same, MD5 differs)"
-            return
+          # Both sides must exist to compare MD5; otherwise it's a difference
+          if [[ -f "$folder/$relfile" && -f "$full_path_cepheus/$relfile" ]]; then
+            local h1 h2
+            h1=$(md5sum "$folder/$relfile" 2>/dev/null | awk '{print $1}')
+            h2=$(md5sum "$full_path_cepheus/$relfile" 2>/dev/null | awk '{print $1}')
+            if [[ -n "$h1" && -n "$h2" && "$h1" != "$h2" ]]; then
+              diff_md5_cnt=$((diff_md5_cnt+1))
+              if compare_file_properties "$folder" "$full_path_cepheus" "$relfile"; then
+                same_props_cnt=$((same_props_cnt+1))
+              fi
+            fi
+          else
+            # Missing on one side also counts as a difference
+            diff_md5_cnt=$((diff_md5_cnt+1))
           fi
-        done < <(cd "$folder" && find . -type f -printf "%P\n")
-        echo "Prüfen -- Metadaten gleich, aber Dateien unterscheiden sich (MD5 Abweichungen)"
+        done < <(cd "$folder" 2>/dev/null && find . -type f -printf "%P\n")
+
+        if (( diff_md5_cnt > 0 )); then
+          if (( same_props_cnt == diff_md5_cnt )); then
+            echo "Die Datei(en) scheinen identisch (Größe/Zeitstempel gleich), jedoch MD5 abweichend (${diff_md5_cnt} Datei/en)"
+          else
+            echo "Prüfen -- Metadaten gleich, aber MD5 Abweichungen (${diff_md5_cnt} Datei/en)"
+          fi
+        else
+          # Fallback (should be rare): folder-level said different but per-file found none
+          echo "Prüfen -- MD5-Abweichung erkannt, Detailvergleich unbestimmt"
+        fi
       fi
     else
       echo "Prüfen -- Digitalise im Cepheus und NutzungDigis in NetApp vorhanden. Unterschiede zwischen Cepheus und neuer Lieferung (Dateien/Typen/Zeiten weichen ab). Entscheidung erforderlich."
@@ -162,13 +183,13 @@ output_file="result_folder_audit_report_${timestamp}.csv"
 echo "Folder Path;Creation Date;File Count;File Types;File Creation Dates;Status (Cepheus);Creation Date (Cepheus);File Count (Cepheus);File Types (Cepheus);File Creation Dates (Cepheus);Status (Nutzung);Creation Date (Nutzung);File Count (Nutzung);File Types (Nutzung);File Creation Dates (Nutzung);Evaluation" > "$output_file"
 
 # Find all lowest-level folders
-echo "Finding all lowest-level folders..."
+echo "Finding and listing all lowest-level folders... It can take sometime..."
 mapfile -t folders < <(find . -type d ! -exec sh -c 'find "$1" -mindepth 1 -type d | grep -q .' sh {} \; -print | sort)
 total_folders=${#folders[@]}
 processed=0
 
-# Reserve 2 lines for progress display
-echo -e "\n\n"
+# Reserve 5 lines (one for each message)
+echo "\n\n\n\n\n"
 
 # Process each folder
 for folder in "${folders[@]}"; do
@@ -178,11 +199,14 @@ for folder in "${folders[@]}"; do
   processed=$((processed + 1))
   progress=$((processed * 100 / total_folders))
 
-  # Update fixed progress lines
-  tput cuu 2
-  echo "Finding lowest-level folders: $progress% complete        "
-  echo "Collecting metadata and evaluating differences: $progress% complete        "
-  
+  # Move cursor up 5 lines and overwrite
+  tput cuu 5
+  printf "Check process started\n"
+  printf "Checking if folders already exist in Cepheus or NetApp\n"
+  printf "Collecting metadata & evaluating differences\n"
+  printf "Status: running...\n"
+  printf "Progress: %d%% complete\n" "$progress"
+
   # Metadata self
   meta_self=$(get_metadata "$folder_clean")
 
@@ -213,4 +237,4 @@ for folder in "${folders[@]}"; do
   echo "$folder_clean;${meta_self};$status_cepheus;${meta_cepheus};$status_nutzung;${meta_nutzung};$eval_text" >> "$output_file"
 done
 
-echo "Audit complete. Results saved to $output_file"
+echo "Status: Audit complete. Results saved to %s\n" "$output_file"
