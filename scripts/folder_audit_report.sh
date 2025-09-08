@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_audit_report.sh
-# Version     : 5.1
+# Version     : 6.1
 # Author      : Mustafa Demiroglu
 # Purpose     : 
 #   This script performs a data stewardship audit of the lowest-level folders
@@ -80,6 +80,9 @@ compare_file_properties() {
   local folder2="$2"
   local file="$3"
 
+  # Check if both are files
+  [[ ! -f "$folder1/$file" || ! -f "$folder2/$file" ]] && return 1
+  
   # Compare file size, modification date, and creation date
   local size1 size2 mtime1 mtime2 ctime1 ctime2
   size1=$(stat -c %s "$folder1/$file")
@@ -122,9 +125,9 @@ evaluate() {
   if [[ "$status_cepheus" == "not_exist" && "$status_nutzung" == "not_exist" ]]; then
     echo "Bereit für Upload – weder in Cepheus noch in NetApp vorhanden"
   elif [[ "$status_cepheus" == "exist" && "$status_nutzung" == "not_exist" ]]; then
-    echo "Ordner in Cepheus vorhanden, keine Nutzungskopie"
+    echo "Prüfen -- Ordner in Cepheus vorhanden aber Digitalisate sind nicht identisch, keine Nutzungskopie"
   elif [[ "$status_cepheus" == "not_exist" && "$status_nutzung" == "exist" ]]; then
-    echo "Ordner nur in Nutzung vorhanden – evtl. manuell erstellt"
+    echo "Prüfen -- Komischerweise: Ordner nur in Nutzung vorhanden – evtl. manuell erstellt"
   elif [[ "$status_cepheus" == "exist" && "$status_nutzung" == "exist" ]]; then
     if [[ "$meta_cepheus_nc" == "$meta_self_nc" ]]; then
       # MD5 Comparison Block
@@ -132,18 +135,21 @@ evaluate() {
         echo "Metadaten (ohne Ordnerdatum) stimmen überein. MD5 geprüft – identisch. Keine Migration nötig."
       else
         # If MD5 doesn't match, but other properties like name, size, timestamps match
-        compare_file_properties "$folder" "$full_path_cepheus" "$folder_clean"
-        if [[ $? -eq 0 ]]; then
-          echo "Die Datei scheint identisch zu sein (Name, Größe, Erstellungsdatum und Modifikationsdatum stimmen überein, jedoch MD5 abweichend)"
-        else
-          echo "Metadaten (ohne Ordnerdatum) gleich, aber Dateien unterscheiden sich (MD5 Abweichungen). Bitte prüfen."
-        fi
+		# Only compare per file, not whole folder name
+        while IFS= read -r relfile; do
+          compare_file_properties "$folder" "$full_path_cepheus" "$relfile"
+          if [[ $? -eq 0 ]]; then
+            echo "Die Datei scheint identisch zu sein (size and timestamps same, MD5 differs)"
+            return
+          fi
+        done < <(cd "$folder" && find . -type f -printf "%P\n")
+        echo "Prüfen -- Metadaten gleich, aber Dateien unterscheiden sich (MD5 Abweichungen)"
       fi
     else
-      echo "Digitalise im Cepheus vorhanden. Unterschiede zwischen Cepheus und neuer Lieferung (Dateien/Typen/Zeiten weichen ab). Entscheidung erforderlich."
+      echo "Prüfen -- Digitalise im Cepheus und NutzungDigis in NetApp vorhanden. Unterschiede zwischen Cepheus und neuer Lieferung (Dateien/Typen/Zeiten weichen ab). Entscheidung erforderlich."
     fi
   else
-    echo "Unbekannter Status – bitte manuell prüfen"
+    echo "Prüfen -- Unbekannter Status – bitte manuell prüfen"
   fi
 }
 
@@ -161,6 +167,9 @@ mapfile -t folders < <(find . -type d ! -exec sh -c 'find "$1" -mindepth 1 -type
 total_folders=${#folders[@]}
 processed=0
 
+# Reserve 2 lines for progress display
+echo -e "\n\n"
+
 # Process each folder
 for folder in "${folders[@]}"; do
   folder_clean=$(trim "$folder")
@@ -168,8 +177,12 @@ for folder in "${folders[@]}"; do
   # Update progress for finding folders
   processed=$((processed + 1))
   progress=$((processed * 100 / total_folders))
-  echo -ne "Finding lowest-level folders: $progress% complete\r"
 
+  # Update fixed progress lines
+  tput cuu 2
+  echo "Finding lowest-level folders: $progress% complete        "
+  echo "Collecting metadata and evaluating differences: $progress% complete        "
+  
   # Metadata self
   meta_self=$(get_metadata "$folder_clean")
 
@@ -196,10 +209,7 @@ for folder in "${folders[@]}"; do
   # Evaluation
   eval_text=$(evaluate "$folder_clean" "$status_cepheus" "$meta_cepheus" "$status_nutzung" "$meta_nutzung" "$meta_self" "$full_path_cepheus")
 
-  # Update progress for metadata collection and evaluation
-  echo -ne "Collecting metadata and evaluating differences: $progress% complete\r"
-
-  # Write row
+  # Write row 
   echo "$folder_clean;${meta_self};$status_cepheus;${meta_cepheus};$status_nutzung;${meta_nutzung};$eval_text" >> "$output_file"
 done
 
