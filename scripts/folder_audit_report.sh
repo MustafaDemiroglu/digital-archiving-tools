@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_audit_report.sh
-# Version     : 6.3
+# Version     : 6.4
 # Author      : Mustafa Demiroglu
 # Purpose     : 
 #   This script performs a data stewardship audit of the lowest-level folders
@@ -237,4 +237,5 @@ for folder in "${folders[@]}"; do
   echo "$folder_clean;${meta_self};$status_cepheus;${meta_cepheus};$status_nutzung;${meta_nutzung};$eval_text" >> "$output_file"
 done
 
-echo "Status: Audit complete. Results saved to %s\n" "$output_file"
+echo "Status: Audit complete. Results saved to:"
+echo "$output_file"
