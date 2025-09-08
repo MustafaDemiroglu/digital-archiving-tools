@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_audit_report.sh
-# Version     : 6.2
+# Version     : 6.3
 # Author      : Mustafa Demiroglu
 # Purpose     : 
 #   This script performs a data stewardship audit of the lowest-level folders
@@ -189,7 +189,11 @@ total_folders=${#folders[@]}
 processed=0
 
 # Reserve 5 lines (one for each message)
-echo "\n\n\n\n\n"
+echo "Check process started"
+echo "Checking if folders already exist in Cepheus or NetApp"
+echo "Collecting metadata & evaluating differences"
+echo "Status: running..."
+echo "Progress: 0%"
 
 # Process each folder
 for folder in "${folders[@]}"; do
@@ -199,12 +203,8 @@ for folder in "${folders[@]}"; do
   processed=$((processed + 1))
   progress=$((processed * 100 / total_folders))
 
-  # Move cursor up 5 lines and overwrite
-  tput cuu 5
-  printf "Check process started\n"
-  printf "Checking if folders already exist in Cepheus or NetApp\n"
-  printf "Collecting metadata & evaluating differences\n"
-  printf "Status: running...\n"
+  # Move cursor up 1 line and overwrite
+  tput cuu 1
   printf "Progress: %d%% complete\n" "$progress"
 
   # Metadata self
