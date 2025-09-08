@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_audit_report.sh
-# Version     : 6.5
+# Version     : 6.6
 # Author      : Mustafa Demiroglu
 # Purpose     : 
 #   This script performs a data stewardship audit of the lowest-level folders
@@ -121,59 +121,69 @@ evaluate() {
   meta_cepheus_nc=$(strip_creation_date "$meta_cepheus")
   meta_self_nc=$(strip_creation_date "$meta_self")
 
+  local evaluated=false
+  
   # Evaluation process
   # --- CASE 1: Cepheus does not exist ---
   if [[ "$status_cepheus" == "not_exist" ]]; then
     if [[ "$status_nutzung" == "not_exist" ]]; then
       echo "Bereit für Upload – weder in Cepheus noch in NetApp vorhanden"
     else
-      echo "Prüfen -- Komischerweise: Ordner nur in Nutzung vorhanden – evtl. manuell erstellt"
+      echo "Prüfen -- Komischerweise: Ordner nur in Nutzung-Digis vorhanden – evtl. manuell erstellt"
     fi
-    return
+    evaluated=true
   fi
 
   # --- CASE 2: Cepheus exists (main check starts here) ---
-  if [[ "$meta_cepheus_nc" != "$meta_self_nc" ]]; then
-    # Metadata differ
-    if [[ "$status_nutzung" == "not_exist" ]]; then
-      echo "Prüfen -- Ordner in Cepheus vorhanden aber Digitalisate sind nicht identisch, keine Nutzungskopie"
-    else
-      echo "Prüfen -- Digitalise im Cepheus und NutzungDigis in NetApp vorhanden. Unterschiede zwischen Cepheus und neuer Lieferung (Dateien/Typen/Zeiten weichen ab). Entscheidung erforderlich."
-    fi
-  else
-    # Metadata identical, check MD5
-    if compare_md5 "$folder" "$full_path_cepheus"; then
-      echo "Metadaten (ohne Ordnerdatum) stimmen überein. MD5 geprüft – identisch. Keine Migration nötig."
-    else
-      # File-level comparison
-      local diff_md5_cnt=0
-      local same_props_cnt=0
-      while IFS= read -r relfile; do
-        if [[ -f "$folder/$relfile" && -f "$full_path_cepheus/$relfile" ]]; then
-          local h1 h2
-          h1=$(md5sum "$folder/$relfile" 2>/dev/null | awk '{print $1}')
-          h2=$(md5sum "$full_path_cepheus/$relfile" 2>/dev/null | awk '{print $1}')
-          if [[ -n "$h1" && -n "$h2" && "$h1" != "$h2" ]]; then
-            diff_md5_cnt=$((diff_md5_cnt+1))
-            if compare_file_properties "$folder" "$full_path_cepheus" "$relfile"; then
-              same_props_cnt=$((same_props_cnt+1))
-            fi
-          fi
-        else
-          diff_md5_cnt=$((diff_md5_cnt+1))
-        fi
-      done < <(cd "$folder" 2>/dev/null && find . -type f -printf "%P\n")
-
-      if (( diff_md5_cnt > 0 )); then
-        if (( same_props_cnt == diff_md5_cnt )); then
-          echo "Die Datei(en) scheinen identisch (Größe/Zeitstempel gleich), jedoch MD5 abweichend (${diff_md5_cnt} Datei/en)"
-        else
-          echo "Prüfen -- Metadaten gleich, aber MD5 Abweichungen (${diff_md5_cnt} Datei/en)"
-        fi
+  if [[ "$evaluated" == false ]]; then
+    if [[ "$meta_cepheus_nc" != "$meta_self_nc" ]]; then
+      # Metadata differ
+      if [[ "$status_nutzung" == "not_exist" ]]; then
+        echo "Prüfen -- Ordner in Cepheus vorhanden aber Digitalisate sind nicht identisch, es gibt auch keine Nutzungskopie"
       else
-        echo "Prüfen -- Unbekannter Status – bitte manuell prüfen"
+        echo "Prüfen -- Digitalise im Cepheus und NutzungDigis in NetApp vorhanden. Unterschiede zwischen Cepheus und neuer Lieferung (Dateien/Typen/Zeiten weichen ab). Entscheidung erforderlich."
+      fi
+      evaluated=true
+    else
+      # Metadata identical, check MD5
+      if compare_md5 "$folder" "$full_path_cepheus"; then
+        echo "Metadaten (ohne Ordnerdatum) stimmen überein. MD5 geprüft – identisch. Keine Migration nötig."
+        evaluated=true
+      else
+        # File-level comparison
+        local diff_md5_cnt=0
+        local same_props_cnt=0
+        while IFS= read -r relfile; do
+          if [[ -f "$folder/$relfile" && -f "$full_path_cepheus/$relfile" ]]; then
+            local h1 h2
+            h1=$(md5sum "$folder/$relfile" 2>/dev/null | awk '{print $1}')
+            h2=$(md5sum "$full_path_cepheus/$relfile" 2>/dev/null | awk '{print $1}')
+            if [[ -n "$h1" && -n "$h2" && "$h1" != "$h2" ]]; then
+              diff_md5_cnt=$((diff_md5_cnt+1))
+              if compare_file_properties "$folder" "$full_path_cepheus" "$relfile"; then
+                same_props_cnt=$((same_props_cnt+1))
+              fi
+            fi
+          else
+            diff_md5_cnt=$((diff_md5_cnt+1))
+          fi
+        done < <(cd "$folder" 2>/dev/null && find . -type f -printf "%P\n")
+
+        if (( diff_md5_cnt > 0 )); then
+          if (( same_props_cnt == diff_md5_cnt )); then
+            echo "Die Datei(en) scheinen identisch (Größe/Zeitstempel gleich), jedoch MD5 abweichend (${diff_md5_cnt} Datei/en) sehen gleich aus"
+          else
+            echo "Prüfen -- Metadaten gleich, aber MD5/Größe/Zeitstempel Abweichungen (${diff_md5_cnt} Datei/en) sehen gleich aus"
+          fi
+          evaluated=true
+        fi
       fi
     fi
+  fi
+
+  # --- FALLBACK: Nothing matched ---
+  if [[ "$evaluated" == false ]]; then
+    echo "Prüfen -- Unbekannter Status – bitte manuell prüfen"
   fi
 }
 
