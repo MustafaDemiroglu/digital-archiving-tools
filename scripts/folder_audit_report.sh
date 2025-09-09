@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_audit_report.sh
-# Version     : 6.6
+# Version     : 7.1
 # Author      : Mustafa Demiroglu
 # Purpose     : 
 #   This script performs a data stewardship audit of the lowest-level folders
@@ -120,8 +120,6 @@ evaluate() {
   local meta_self_nc
   meta_cepheus_nc=$(strip_creation_date "$meta_cepheus")
   meta_self_nc=$(strip_creation_date "$meta_self")
-
-  local evaluated=false
   
   # Evaluation process
   # --- CASE 1: Cepheus does not exist ---
@@ -131,11 +129,10 @@ evaluate() {
     else
       echo "Prüfen -- Komischerweise: Ordner nur in Nutzung-Digis vorhanden – evtl. manuell erstellt"
     fi
-    evaluated=true
+    return
   fi
 
   # --- CASE 2: Cepheus exists (main check starts here) ---
-  if [[ "$evaluated" == false ]]; then
     if [[ "$meta_cepheus_nc" != "$meta_self_nc" ]]; then
       # Metadata differ
       if [[ "$status_nutzung" == "not_exist" ]]; then
@@ -143,12 +140,10 @@ evaluate() {
       else
         echo "Prüfen -- Digitalise im Cepheus und NutzungDigis in NetApp vorhanden. Unterschiede zwischen Cepheus und neuer Lieferung (Dateien/Typen/Zeiten weichen ab). Entscheidung erforderlich."
       fi
-      evaluated=true
     else
       # Metadata identical, check MD5
       if compare_md5 "$folder" "$full_path_cepheus"; then
         echo "Metadaten (ohne Ordnerdatum) stimmen überein. MD5 geprüft – identisch. Keine Migration nötig."
-        evaluated=true
       else
         # File-level comparison
         local diff_md5_cnt=0
@@ -175,16 +170,9 @@ evaluate() {
           else
             echo "Prüfen -- Metadaten gleich, aber MD5/Größe/Zeitstempel Abweichungen (${diff_md5_cnt} Datei/en) sehen gleich aus"
           fi
-          evaluated=true
         fi
       fi
     fi
-  fi
-
-  # --- FALLBACK: Nothing matched ---
-  if [[ "$evaluated" == false ]]; then
-    echo "Prüfen -- Unbekannter Status – bitte manuell prüfen"
-  fi
 }
 
 # --- Main script ---
