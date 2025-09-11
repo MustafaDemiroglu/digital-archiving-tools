@@ -3,7 +3,7 @@ set -euo pipefail
 
 # -----------------------------------------------------------------------------
 # delete_pdfs_with_list.sh
-# version 1.2
+# version 1.3
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -48,9 +48,9 @@ fi
 LIST_FILE="$1"
 DRY_RUN=false
 
-if [[ "${2:-}" == "--help" ]]; then
+if [[ "${2:-}" == "-h|--help" ]]; then
     show_help
-elif [[ "${2:-}" == "--dry-run" ]]; then
+elif [[ "${2:-}" == "-n|--dry-run" ]]; then
     DRY_RUN=true
 fi
 
