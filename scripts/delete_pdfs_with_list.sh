@@ -3,7 +3,7 @@ set -euo pipefail
 
 # -----------------------------------------------------------------------------
 # delete_pdfs_with_list.sh
-# version 1.3
+# version 1.4
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -32,72 +32,103 @@ set -euo pipefail
 #
 ###############################################################################
 
-set -euo pipefail
+usage() {
+  cat <<USAGE
+Usage: $0 [OPTIONS] LISTFILE
 
-show_help() {
-    grep '^#' "$0" | sed 's/^#//'
-    exit 0
+Options:
+  -n, --dry-run     Show what would be deleted, but do not delete anything.
+  -v, --verbose     Print extra progress information.
+  -h, --help        Show this help message.
+
+Arguments:
+  LISTFILE          A text file containing one directory path per line.
+USAGE
 }
 
-if [[ $# -lt 1 ]]; then
-    echo "[ERROR] Missing arguments."
-    echo "Usage: $0 <list_file> [--dry-run]"
-    exit 1
+# Parse options
+DRY_RUN=0
+VERBOSE=0
+LISTFILE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -n|--dry-run) DRY_RUN=1; shift ;;
+    -v|--verbose) VERBOSE=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) LISTFILE="$1"; shift ;;
+  esac
+done
+
+# Validate input
+if [[ -z "$LISTFILE" ]]; then
+  echo "Error: no list file specified." >&2
+  usage
+  exit 1
 fi
 
-LIST_FILE="$1"
-DRY_RUN=false
-
-if [[ "${2:-}" == "-h|--help" ]]; then
-    show_help
-elif [[ "${2:-}" == "-n|--dry-run" ]]; then
-    DRY_RUN=true
+if [[ ! -f "$LISTFILE" ]]; then
+  echo "Error: list file '$LISTFILE' not found." >&2
+  exit 1
 fi
 
-if [[ ! -f "$LIST_FILE" ]]; then
-    echo "[ERROR] List file not found: $LIST_FILE"
-    exit 1
+if (( DRY_RUN )); then
+  echo "[INFO] Running in DRY-RUN mode. No files will be deleted."
 fi
 
-ALL_PDFS=()
+# Collect all PDFs first
+all_pdfs=()
+while IFS= read -r dir; do
+  [[ -z "$dir" ]] && continue
+  [[ "$dir" =~ ^# ]] && continue
 
-# Collect PDFs from each listed directory
-while IFS= read -r dir || [[ -n "$dir" ]]; do
-    [[ -z "$dir" ]] && continue
-    if [[ ! -d "$dir" ]]; then
-        echo "[WARN] Directory does not exist: $dir"
-        continue
+  if [[ ! -d "$dir" ]]; then
+    echo "[WARN] Directory does not exist: $dir" >&2
+    continue
+  fi
+
+  if (( VERBOSE )); then
+    echo "[INFO] Scanning directory: $dir"
+  fi
+
+  mapfile -t pdfs < <(find "$dir" -type f -name "*.pdf" 2>/dev/null || true)
+  if [[ ${#pdfs[@]} -eq 0 ]]; then
+    if (( VERBOSE )); then
+      echo "[INFO] No PDF files found in: $dir"
     fi
-    while IFS= read -r pdf; do
-        ALL_PDFS+=("$pdf")
-    done < <(find "$dir" -type f -name "*.pdf")
-done < "$LIST_FILE"
+    continue
+  fi
 
-if [[ ${#ALL_PDFS[@]} -eq 0 ]]; then
-    echo "[INFO] No PDF files found to process."
-    exit 0
+  all_pdfs+=("${pdfs[@]}")
+
+done < "$LISTFILE"
+
+# If no PDFs at all
+if [[ ${#all_pdfs[@]} -eq 0 ]]; then
+  echo "[INFO] No PDF files found in any listed directory."
+  exit 0
 fi
 
 echo "---------------------------------------------"
-echo "PDF files identified:"
-printf '%s\n' "${ALL_PDFS[@]}"
+echo "PDF files found:"
+printf '%s\n' "${all_pdfs[@]}"
 echo "---------------------------------------------"
 
-if $DRY_RUN; then
-    echo "[DRY-RUN] No files were deleted. (This was only a simulation)"
-    exit 0
-fi
-
-echo "WARNING: The above PDF files will be permanently deleted!"
-read -rp "Do you want to proceed? (y/N): " CONFIRM
-
-if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
-    for pdf in "${ALL_PDFS[@]}"; do
-        echo "[DELETE] $pdf"
-        rm -f -- "$pdf"
-    done
-    echo "[DONE] All selected PDF files have been deleted."
+if (( DRY_RUN )); then
+  echo "[DRY-RUN] Would delete the above files."
 else
-    echo "[CANCEL] User did not confirm. No files were deleted."
-    exit 0
+  read -p "Delete these files? (yes/no): " answer
+  case "$answer" in
+    yes|y|Y)
+      for file in "${all_pdfs[@]}"; do
+        rm -v -- "$file"
+      done
+      echo "[OK] All selected PDF files deleted."
+      ;;
+    *)
+      echo "[INFO] Onay verilmedi. Hiçbir dosya silinmedi."
+      exit 0
+      ;;
+  esac
 fi
+
+echo "[DONE] Script finished."
