@@ -3,7 +3,7 @@ set -euo pipefail
 
 # -----------------------------------------------------------------------------
 # delete_pdfs_with_list.sh
-# version 1.4
+# version 1.5
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -77,7 +77,11 @@ fi
 
 # Collect all PDFs first
 all_pdfs=()
-while IFS= read -r dir; do
+while IFS= read -r dir || [[ -n "$dir" ]]; do
+  # Remove possible Windows CR (\r) at the end
+  dir="${dir%$'\r'}"
+
+  # Skip empty lines and comments
   [[ -z "$dir" ]] && continue
   [[ "$dir" =~ ^# ]] && continue
 
@@ -125,7 +129,7 @@ else
       echo "[OK] All selected PDF files deleted."
       ;;
     *)
-      echo "[INFO] Onay verilmedi. Hiçbir dosya silinmedi."
+      echo "[INFO] Cancelled by User. Nothing deleted."
       exit 0
       ;;
   esac
