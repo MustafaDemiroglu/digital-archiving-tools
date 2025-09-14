@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_audit_report.sh
-# Version     : 7.1
+# Version     : 8.4
 # Author      : Mustafa Demiroglu
 # Purpose     : 
 #   This script performs a data stewardship audit of the lowest-level folders
@@ -64,45 +64,65 @@ get_metadata() {
   echo "$creation_date;$file_count;$file_types;$file_dates"
 }
 
-# Compare md5sums of all files in two folders
-compare_md5() {
-  local folder1="$1"
-  local folder2="$2"
-  diff -q \
-    <(cd "$folder1" 2>/dev/null && find . -type f -exec md5sum {} + | sort) \
-    <(cd "$folder2" 2>/dev/null && find . -type f -exec md5sum {} + | sort) >/dev/null
-  return $?
-}
+# Compare SHA-256 of all files in two folders (content-based comparison)
+compare_sha256() {
+  local folder_src="$1"
+  local folder_dst="$2"
 
-# Compare additional file properties if MD5 is different
-compare_file_properties() {
-  local folder1="$1"
-  local folder2="$2"
-  local file="$3"
+  total_src_files=0
+  total_dst_files=0
+  same_sha_cnt=0
+  diff_sha_cnt=0
+  same_sha_samples=""
 
-  # Check if both are files
-  [[ ! -f "$folder1/$file" || ! -f "$folder2/$file" ]] && return 1
-  
-  # Compare file size, modification date, and creation date
-  local size1 size2 mtime1 mtime2 ctime1 ctime2
-  size1=$(stat -c %s "$folder1/$file" 2>/dev/null)
-  size2=$(stat -c %s "$folder2/$file" 2>/dev/null)
-  mtime1=$(stat -c %y "$folder1/$file" 2>/dev/null | cut -d' ' -f1)
-  mtime2=$(stat -c %y "$folder2/$file" 2>/dev/null | cut -d' ' -f1)
-  ctime1=$(stat -c %w "$folder1/$file" 2>/dev/null || stat -c %y "$folder1/$file" 2>/dev/null | cut -d' ' -f1)
-  ctime2=$(stat -c %w "$folder2/$file" 2>/dev/null || stat -c %y "$folder2/$file" 2>/dev/null | cut -d' ' -f1)
+  # Build hash -> paths mapping for destination
+  declare -A dst_by_hash
+  # Also track number of files in destination
+  while IFS= read -r -d '' f; do
+    rel=${f#./}
+    # compute hash with sha256sum; ignore errors silently
+    h=$(sha256sum "$f" 2>/dev/null | awk '{print $1}')
+    if [[ -n "$h" ]]; then
+      if [[ -z "${dst_by_hash[$h]}" ]]; then
+        dst_by_hash[$h]="$rel"
+      else
+        dst_by_hash[$h]="${dst_by_hash[$h]}|$rel"
+      fi
+      total_dst_files=$((total_dst_files+1))
+    fi
+  done < <(cd "$folder_dst" 2>/dev/null && find . -type f -print0)
 
-  if [[ "$size1" == "$size2" && "$mtime1" == "$mtime2" && "$ctime1" == "$ctime2" ]]; then
-    return 0  # Files are identical based on size, modification, and creation date
+  # For each src file compute its hash and check if that hash exists in dst_by_hash
+  # Count per-file matches (a source file counts as matched if its hash is present in dst)
+  while IFS= read -r -d '' f; do
+    rel=${f#./}
+    total_src_files=$((total_src_files+1))
+    h=$(sha256sum "$f" 2>/dev/null | awk '{print $1}')
+    if [[ -n "$h" && -n "${dst_by_hash[$h]}" ]]; then
+      same_sha_cnt=$((same_sha_cnt+1))
+      # create a sample line: "src/rel -> dstpath1|dstpath2"
+      sample_line="$rel -> ${dst_by_hash[$h]}"
+      # limit the number of sample lines to avoid extremely long messages
+      if [[ $(echo -n "$same_sha_samples" | wc -l) -lt 25 ]]; then
+        same_sha_samples+="${sample_line}"$'\n'
+      fi
+    else
+      diff_sha_cnt=$((diff_sha_cnt+1))
+    fi
+  done < <(cd "$folder_src" 2>/dev/null && find . -type f -print0)
+
+  # if totals equal and no diffs and counts are equal and also file counts equal -> return 0 (identical)
+  if (( total_src_files == total_dst_files && diff_sha_cnt == 0 )); then
+    return 0
   else
-    return 1  # Files differ based on size or dates
+    return 1
   fi
 }
 
 # --- Compare metadata sets without creation date ---
-# Strip first field (creation date) before comparison
-strip_creation_date() {
-  echo "$1" | cut -d';' -f2-
+# Strip first field (creation date) and last field (file creation dates) before comparison
+strip_dates_from_metadata() {
+  echo "$1" | cut -d';' -f2-3
 }
 
 # Evaluate differences
@@ -115,64 +135,67 @@ evaluate() {
   local meta_self="$6"
   local full_path_cepheus="$7"
 
-  # compare metadata without creation date
-  local meta_cepheus_nc
-  local meta_self_nc
-  meta_cepheus_nc=$(strip_creation_date "$meta_cepheus")
-  meta_self_nc=$(strip_creation_date "$meta_self")
+  # compare metadata without creation dates (both folder and file dates)
+  local meta_cepheus_nd
+  local meta_self_nd
+  meta_cepheus_nd=$(strip_dates_from_metadata "$meta_cepheus")
+  meta_self_nd=$(strip_dates_from_metadata "$meta_self")
+  
+  # Initialize SHA comparison variables (will be set by compare_sha256 if called)
+  total_src_files=0
+  total_dst_files=0
+  same_sha_cnt=0
+  diff_sha_cnt=0
+  same_sha_samples=""
   
   # Evaluation process
   # --- CASE 1: Cepheus does not exist ---
   if [[ "$status_cepheus" == "not_exist" ]]; then
     if [[ "$status_nutzung" == "not_exist" ]]; then
-      echo "Bereit für Upload – weder in Cepheus noch in NetApp vorhanden"
+      echo "Uploadbereit. weder in Cepheus noch in NetApp vorhanden"
     else
-      echo "Prüfen -- Komischerweise: Ordner nur in Nutzung-Digis vorhanden – evtl. manuell erstellt"
+      echo "Pruefen. Ordner nur in NutzungDigis vorhanden. manuell erstellt"
     fi
     return
   fi
 
   # --- CASE 2: Cepheus exists (main check starts here) ---
-    if [[ "$meta_cepheus_nc" != "$meta_self_nc" ]]; then
-      # Metadata differ
-      if [[ "$status_nutzung" == "not_exist" ]]; then
-        echo "Prüfen -- Ordner in Cepheus vorhanden aber Digitalisate sind nicht identisch, es gibt auch keine Nutzungskopie"
-      else
-        echo "Prüfen -- Digitalise im Cepheus und NutzungDigis in NetApp vorhanden. Unterschiede zwischen Cepheus und neuer Lieferung (Dateien/Typen/Zeiten weichen ab). Entscheidung erforderlich."
-      fi
-    else
-      # Metadata identical, check MD5
-      if compare_md5 "$folder" "$full_path_cepheus"; then
-        echo "Metadaten (ohne Ordnerdatum) stimmen überein. MD5 geprüft – identisch. Keine Migration nötig."
-      else
-        # File-level comparison
-        local diff_md5_cnt=0
-        local same_props_cnt=0
-        while IFS= read -r relfile; do
-          if [[ -f "$folder/$relfile" && -f "$full_path_cepheus/$relfile" ]]; then
-            local h1 h2
-            h1=$(md5sum "$folder/$relfile" 2>/dev/null | awk '{print $1}')
-            h2=$(md5sum "$full_path_cepheus/$relfile" 2>/dev/null | awk '{print $1}')
-            if [[ -n "$h1" && -n "$h2" && "$h1" != "$h2" ]]; then
-              diff_md5_cnt=$((diff_md5_cnt+1))
-              if compare_file_properties "$folder" "$full_path_cepheus" "$relfile"; then
-                same_props_cnt=$((same_props_cnt+1))
-              fi
-            fi
-          else
-            diff_md5_cnt=$((diff_md5_cnt+1))
-          fi
-        done < <(cd "$folder" 2>/dev/null && find . -type f -printf "%P\n")
-
-        if (( diff_md5_cnt > 0 )); then
-          if (( same_props_cnt == diff_md5_cnt )); then
-            echo "Die Datei(en) scheinen identisch (Größe/Zeitstempel gleich), jedoch MD5 abweichend (${diff_md5_cnt} Datei/en) sehen gleich aus"
-          else
-            echo "Prüfen -- Metadaten gleich, aber MD5/Größe/Zeitstempel Abweichungen (${diff_md5_cnt} Datei/en) sehen gleich aus"
-          fi
-        fi
-      fi
+  # Always perform SHA-256 comparison for all Case 2 situations
+  compare_sha256 "$folder" "$full_path_cepheus"
+  cmp_result=$?
+  
+  # Build SHA comparison note
+  local sha_note
+  if [[ $cmp_result -eq 0 ]]; then
+    sha_note="SHA256 geprueft und alle Dateien stimmen ueberein."
+  else
+    sha_note="Inhaltsvergleich zeigt Unterschiede."
+    sha_note+=" (${same_sha_cnt} von ${total_src_files} Quelldatei/en sind in Cepheus inhaltlich vorhanden; ${diff_sha_cnt} Datei/en unterscheiden sich oder fehlen)."
+    # If there are samples, include them (limit to first 10 samples)
+    if [[ -n "$same_sha_samples" ]]; then
+      sha_note+=" Ubereinstimmungen (src -> dst): "
+      local sample_snippet
+      sample_snippet=$(echo -n "$same_sha_samples" | sed -n '1,10p' | tr '\n' ';' | sed 's/;$/./')
+      sha_note+="${sample_snippet}"
     fi
+  fi
+  
+  # Now build the evaluation note based on metadata comparison
+  if [[ "$meta_cepheus_nd" != "$meta_self_nd" ]]; then
+    # Metadata differ
+    if [[ "$status_nutzung" == "not_exist" ]]; then
+      echo "Pruefen. Ordner in Cepheus vorhanden aber Digitalisate sind nicht identisch. es gibt auch keine Nutzungskopie; ${sha_note}"
+    else
+      echo "Pruefen. Digitalisate im Cepheus und NutzungDigis in NetApp vorhanden. Unterschiede zwischen Cepheus und neuer Lieferung (Dateien/Typen weichen ab). Entscheidung erforderlich; ${sha_note}"
+    fi
+  else
+    # Metadata identical (without dates)
+    if [[ $cmp_result -eq 0 ]]; then
+      echo "identisch. ${sha_note} Keine Migration"
+    else
+      echo "Pruefen. Metadaten gleich, jedoch ${sha_note}"
+    fi
+  fi
 }
 
 # --- Main script ---
@@ -237,6 +260,9 @@ for folder in "${folders[@]}"; do
   # Write row 
   echo "$folder_clean;${meta_self};$status_cepheus;${meta_cepheus};$status_nutzung;${meta_nutzung};$eval_text" >> "$output_file"
 done
+
+# Convert the CSV to UTF-8 format
+iconv -f ISO-8859-1 -t UTF-8 "$output_file" -o "${output_file%.csv}_utf8.csv"
 
 echo "Status: Audit complete. Results saved to:"
 echo "$output_file"
