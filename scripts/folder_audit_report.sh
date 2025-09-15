@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_audit_report.sh
-# Version     : 8.4
+# Version     : 8.5
 # Author      : Mustafa Demiroglu
 # Purpose     : 
 #   This script performs a data stewardship audit of the lowest-level folders
@@ -154,7 +154,7 @@ evaluate() {
     if [[ "$status_nutzung" == "not_exist" ]]; then
       echo "Uploadbereit. weder in Cepheus noch in NetApp vorhanden"
     else
-      echo "Pruefen. Ordner nur in NutzungDigis vorhanden. manuell erstellt"
+      echo "Pruefen. Ordner nur in NutzungDigis vorhanden. vielleicht manuell erstellt"
     fi
     return
   fi
@@ -170,13 +170,13 @@ evaluate() {
     sha_note="SHA256 geprueft und alle Dateien stimmen ueberein."
   else
     sha_note="Inhaltsvergleich zeigt Unterschiede."
-    sha_note+=" (${same_sha_cnt} von ${total_src_files} Quelldatei/en sind in Cepheus inhaltlich vorhanden; ${diff_sha_cnt} Datei/en unterscheiden sich oder fehlen)."
+    sha_note+="; (${same_sha_cnt} von ${total_src_files} Quelldatei/en sind in Cepheus inhaltlich vorhanden; ${diff_sha_cnt} Datei/en unterscheiden sich oder fehlen)."
     # If there are samples, include them (limit to first 10 samples)
     if [[ -n "$same_sha_samples" ]]; then
-      sha_note+=" Ubereinstimmungen (src -> dst): "
+      sha_note+="; Ubereinstimmungen (src -> dst): "
       local sample_snippet
       sample_snippet=$(echo -n "$same_sha_samples" | sed -n '1,10p' | tr '\n' ';' | sed 's/;$/./')
-      sha_note+="${sample_snippet}"
+      sha_note+=";${sample_snippet}"
     fi
   fi
   
@@ -184,7 +184,7 @@ evaluate() {
   if [[ "$meta_cepheus_nd" != "$meta_self_nd" ]]; then
     # Metadata differ
     if [[ "$status_nutzung" == "not_exist" ]]; then
-      echo "Pruefen. Ordner in Cepheus vorhanden aber Digitalisate sind nicht identisch. es gibt auch keine Nutzungskopie; ${sha_note}"
+      echo "Pruefen. Ordner in Cepheus vorhanden aber Digitalisate sind nicht identisch. es gibt keine Nutzungskopie; ${sha_note}"
     else
       echo "Pruefen. Digitalisate im Cepheus und NutzungDigis in NetApp vorhanden. Unterschiede zwischen Cepheus und neuer Lieferung (Dateien/Typen weichen ab). Entscheidung erforderlich; ${sha_note}"
     fi
@@ -193,7 +193,7 @@ evaluate() {
     if [[ $cmp_result -eq 0 ]]; then
       echo "identisch. ${sha_note} Keine Migration"
     else
-      echo "Pruefen. Metadaten gleich, jedoch ${sha_note}"
+      echo "Pruefen. Metadaten gleich, jedoch; ${sha_note}"
     fi
   fi
 }
@@ -204,7 +204,7 @@ timestamp=$(date +%Y-%m-%d)
 output_file="result_folder_audit_report_${timestamp}.csv"
 
 # Write header
-echo "Folder Path;Creation Date;File Count;File Types;File Creation Dates;Status (Cepheus);Creation Date (Cepheus);File Count (Cepheus);File Types (Cepheus);File Creation Dates (Cepheus);Status (Nutzung);Creation Date (Nutzung);File Count (Nutzung);File Types (Nutzung);File Creation Dates (Nutzung);Evaluation" > "$output_file"
+echo "Folder Path;Creation Date;File Count;File Types;File Creation Dates;Status (Cepheus);Creation Date (Cepheus);File Count (Cepheus);File Types (Cepheus);File Creation Dates (Cepheus);Status (Nutzung);Creation Date (Nutzung);File Count (Nutzung);File Types (Nutzung);File Creation Dates (Nutzung);Evaluation(Part1);Evaluation (Part2);Evaluation (Part3)" > "$output_file"
 
 # Find all lowest-level folders
 echo "Finding and listing all lowest-level folders... It can take sometime..."
@@ -260,9 +260,6 @@ for folder in "${folders[@]}"; do
   # Write row 
   echo "$folder_clean;${meta_self};$status_cepheus;${meta_cepheus};$status_nutzung;${meta_nutzung};$eval_text" >> "$output_file"
 done
-
-# Convert the CSV to UTF-8 format
-iconv -f ISO-8859-1 -t UTF-8 "$output_file" -o "${output_file%.csv}_utf8.csv"
 
 echo "Status: Audit complete. Results saved to:"
 echo "$output_file"
