@@ -74,6 +74,7 @@ compare_md5() {
   # Also track number of files in destination
   while IFS= read -r -d '' f; do
     rel=${f#./}
+	# compute hash with md5sum; ignore errors silently
     h=$(md5sum "$folder_dst/$rel" 2>/dev/null | awk '{print $1}')
     if [[ -n "$h" ]]; then
       if [[ -z "${dst_by_hash[$h]}" ]]; then
@@ -93,7 +94,9 @@ compare_md5() {
     h=$(md5sum "$folder_src/$rel" 2>/dev/null | awk '{print $1}')
     if [[ -n "$h" && -n "${dst_by_hash[$h]}" ]]; then
       same_md5_cnt=$((same_md5_cnt+1))
+	  # create a sample line: "src/rel -> dstpath1|dstpath2"
       sample_line="$rel -> ${dst_by_hash[$h]}"
+	  # limit the number of sample lines to avoid extremely long messages
       if [[ $(echo -n "$same_md5_samples" | wc -l) -lt 25 ]]; then
         same_md5_samples+="${sample_line}"$'\n'
       fi
