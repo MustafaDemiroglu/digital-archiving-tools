@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: compare_folder_structures.sh
-# Version 1.0
+# Version 2.1
 # Author: Mustafa Demiroglu
 #
 # Description:
 #   This script compares two large folder structures to identify missing
-#   directories. It is designed for use on Linux, macOS, and Windows (via WSL
+#   directories. It supports excluding certain folders from search (-e)
+#   and limiting the search to specific subfolders (-s). 
+#   It is designed for use on Linux, macOS, and Windows (via WSL
 #   or Git Bash). The goal is to ensure that both folder trees are identical
 #   in structure. Any missing directories will be reported in a CSV file.
 #
@@ -25,6 +27,10 @@
 #
 # Example Usage:
 #   ./compare_folder_structures.sh /media/archive/public/www /media/cepheus
+#   ./compare_folder_structures.sh www cepheus -e thumbs
+#   ./compare_folder_structures.sh www cepheus -s hstam,hstad,hhstaw
+#   ./compare_folder_structures.sh www cepheus -e thumbs -s hstam,hstad
+#   ./compare_folder_structures.sh www cepheus -e thumbs,cache,tmp
 #
 ###############################################################################
 
@@ -35,6 +41,31 @@ DATE=$(date +"%Y-%m-%d_%H-%M-%S")
 SCRIPT_NAME=$(basename "$0" .sh)
 LOG_FILE="result_${SCRIPT_NAME}_${DATE}.log"
 CSV_FILE="lost_${SCRIPT_NAME}_${DATE}.csv"
+
+EXCEPT_DIRS=()
+SEARCH_DIRS=()
+
+# Parse arguments
+ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -e|--except)
+            shift
+            IFS=',' read -ra EXCEPT_DIRS <<< "${1:-}"
+            ;;
+        -s|--search)
+            shift
+            IFS=',' read -ra SEARCH_DIRS <<< "${1:-}"
+            ;;
+        *)
+            ARGS+=("$1")
+            ;;
+    esac
+    shift || true
+done
+
+REFERENCE_DIR=${ARGS[0]:-}
+TARGET_DIR=${ARGS[1]:-}
 
 # Function to ask for input if not provided
 ask_for_input() {
@@ -54,17 +85,21 @@ TARGET_DIR=${2:-}
 
 REFERENCE_DIR=$(ask_for_input REFERENCE_DIR "Enter path to reference directory")
 TARGET_DIR=$(ask_for_input TARGET_DIR "Enter path to target directory")
-
 echo "Reference directory: $REFERENCE_DIR"
 echo "Target directory:    $TARGET_DIR"
 echo "Logs will be saved in: $LOG_FILE"
 echo "Missing directories will be saved in: $CSV_FILE"
+echo "Except dirs: ${EXCEPT_DIRS[*]:-(none)}"
+echo "Search dirs: ${SEARCH_DIRS[*]:-(all)}"
 echo "-------------------------------------------------"
+echo "Searching dirs can take some time"
 
 # Initialize log and CSV
 echo "Script started at $(date)" > "$LOG_FILE"
 echo "Reference: $REFERENCE_DIR" >> "$LOG_FILE"
 echo "Target:    $TARGET_DIR" >> "$LOG_FILE"
+echo "Except:    ${EXCEPT_DIRS[*]:-(none)}" >> "$LOG_FILE"
+echo "Search:    ${SEARCH_DIRS[*]:-(all)}" >> "$LOG_FILE"
 echo "-------------------------------------------------" >> "$LOG_FILE"
 echo "Missing_Directory" > "$CSV_FILE"
 
@@ -79,21 +114,32 @@ if [ ! -d "$TARGET_DIR" ]; then
     exit 1
 fi
 
-# Traverse all directories in reference
-# -print0 and read -d '' ensure spaces in names are handled safely
+# Build find command
+FIND_PATHS=()
+if [ ${#SEARCH_DIRS[@]} -gt 0 ]; then
+    for sd in "${SEARCH_DIRS[@]}"; do
+        FIND_PATHS+=("$REFERENCE_DIR/$sd")
+    done
+else
+    FIND_PATHS+=("$REFERENCE_DIR")
+fi
+
+EXCLUDE_ARGS=()
+if [ ${#EXCEPT_DIRS[@]} -gt 0 ]; then
+    for ed in "${EXCEPT_DIRS[@]}"; do
+        EXCLUDE_ARGS+=(-not -path "*/$ed" -not -path "*/$ed/*")
+    done
+fi
+
+# Traverse directories
 while IFS= read -r -d '' dir; do
-    # Relative path from reference root
     rel_path="${dir#$REFERENCE_DIR/}"
-
-    # Skip if rel_path is empty (the root itself)
     [ -z "$rel_path" ] && continue
-
     target_path="$TARGET_DIR/$rel_path"
-
     if [ ! -d "$target_path" ]; then
         echo "$rel_path" >> "$CSV_FILE"
     fi
-done < <(find "$REFERENCE_DIR" -type d -print0 2>>"$LOG_FILE")
+done < <(find "${FIND_PATHS[@]}" -type d "${EXCLUDE_ARGS[@]}" -print0 2>>"$LOG_FILE")
 
 echo "-------------------------------------------------" >> "$LOG_FILE"
 echo "Script finished at $(date)" >> "$LOG_FILE"
