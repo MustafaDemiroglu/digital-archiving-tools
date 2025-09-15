@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: compare_folder_structures.sh
-# Version 2.1
+# Version 2.2
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -51,11 +51,13 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         -e|--except)
             shift
-            IFS=',' read -ra EXCEPT_DIRS <<< "${1:-}"
+            IFS=',' read -ra temp <<< "${1:-}"
+            EXCEPT_DIRS+=("${temp[@]}")
             ;;
         -s|--search)
             shift
-            IFS=',' read -ra SEARCH_DIRS <<< "${1:-}"
+            IFS=',' read -ra temp <<< "${1:-}"
+            SEARCH_DIRS+=("${temp[@]}")
             ;;
         *)
             ARGS+=("$1")
@@ -79,12 +81,9 @@ ask_for_input() {
     echo "$value"
 }
 
-# Get directories from arguments or ask user
-REFERENCE_DIR=${1:-}
-TARGET_DIR=${2:-}
-
 REFERENCE_DIR=$(ask_for_input REFERENCE_DIR "Enter path to reference directory")
 TARGET_DIR=$(ask_for_input TARGET_DIR "Enter path to target directory")
+
 echo "Reference directory: $REFERENCE_DIR"
 echo "Target directory:    $TARGET_DIR"
 echo "Logs will be saved in: $LOG_FILE"
