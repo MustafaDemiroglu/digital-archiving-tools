@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 2.8
+# Version 2.9
 # Author : Mustafa Demiropglu
 #
 # Description:
@@ -134,9 +134,6 @@ process_pdf() {
   
   # Count extracted images
   local imgcount
-  imgcount=$(ls "${dir}/${prefix}"-*."$OUTFMT" 2>/dev/null | wc -l)
-
-  local imgcount
   imgcount=$(echo "$extracted" | wc -w)
 
   if [[ "$imgcount" -eq 0 ]]; then
@@ -146,8 +143,8 @@ process_pdf() {
 
   # Compare page count and image count
   if [[ "$imgcount" -ne "$pages" ]]; then
-    # cleanup wrong images
-    rm -f $extracted
+    # cleanup wrong images (exclude PDF files to prevent accidental deletion)
+    find "$dir" -name "${prefix}-*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
     echo "ERROR: mismatch in $pdf (expected $pages, got $imgcount)" | tee -a "$ERRFILE"
     return 1
   fi
@@ -164,7 +161,8 @@ process_pdf() {
   echo "SUCCESS: $pdf extracted correctly ($imgcount pages)" | tee -a "$LOGFILE"
   
   # Move processed PDF and images, preserving folder structure
-  relative_dir="${dir#$WORKDIR/}"                     
+  relative_dir="${dir#$WORKDIR}"
+  relative_dir="${relative_dir#/}"
   local processed_dir="$WORKDIR/processed_pdfs/$relative_dir"
   mkdir -p "$processed_dir"
 
@@ -172,12 +170,21 @@ process_pdf() {
   if [[ -f "$target" ]]; then
     echo "WARNING: $target already exists, skipping move." | tee -a "$ERRFILE"
   else
-    if mv "$pdf" "$processed_dir/"; then
-      echo "Moved $pdf -> $processed_dir/" | tee -a "$LOGFILE"
+    # Debug: show what we're trying to create
+    echo "DEBUG: Creating directory: $processed_dir" | tee -a "$LOGFILE"
+    if mkdir -p "$processed_dir" 2>>"$ERRFILE"; then
+      if mv "$pdf" "$processed_dir/"; then
+        echo "Moved $pdf -> $processed_dir/" | tee -a "$LOGFILE"
+      else
+        echo "ERROR: failed to move $pdf to $processed_dir/" | tee -a "$ERRFILE"
+        # --- cleanup images if PDF move fails (exclude PDF files to prevent accidental deletion) ---
+        find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
+        return 1
+      fi
     else
-      echo "ERROR: failed to move $pdf" | tee -a "$ERRFILE"
-      # --- cleanup images if PDF move fails ---
-      rm -f "${dir}/${prefix}"_*."$OUTFMT"
+      echo "ERROR: cannot create directory $processed_dir" | tee -a "$ERRFILE"
+      # --- cleanup images if PDF move fails (exclude PDF files to prevent accidental deletion) ---
+      find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
       return 1
     fi
   fi
@@ -186,8 +193,8 @@ process_pdf() {
 export -f process_pdf
 export LOGFILE ERRFILE OUTFMT
 
-# Find all PDFs and process in parallel with xargs -P
-find "$WORKDIR" -type f -iname "*.pdf" | xargs -I{} -P "$CPUCOUNT" bash -c 'process_pdf "$@"' _ {}
+# Find all PDFs and process in parallel with xargs -P , exception:processed_pdfs
+find "$WORKDIR" -type f -iname "*.pdf" -not -path "*/processed_pdfs/*" | xargs -I{} -P "$CPUCOUNT" bash -c 'process_pdf "$@"' _ {}
 
 echo
 echo "Done. Check $LOGFILE and $ERRFILE for details."
