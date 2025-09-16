@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 2.4
+# Version 2.5
 # Author : Mustafa Demiropglu
 #
 # Description:
@@ -58,7 +58,8 @@ if [[ "$OUTFMT" != "tif" && "$OUTFMT" != "jpg" && "$OUTFMT" != "all" ]]; then
   exit 1
 fi
 
-# --- Clear log files from previous runs ---
+# --- Prepare folders and Clear log files from previous runs ---
+mkdir -p "$TMPPDFDIR"
 : > "$LOGFILE"
 : > "$ERRFILE"
 
