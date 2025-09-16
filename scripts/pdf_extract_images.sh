@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 2.7
+# Version 2.8
 # Author : Mustafa Demiropglu
 #
 # Description:
@@ -163,11 +163,24 @@ process_pdf() {
 
   echo "SUCCESS: $pdf extracted correctly ($imgcount pages)" | tee -a "$LOGFILE"
   
-  # Move processed PDF and images, preserving folder structure (relative to WORKDIR)
-  relative_dir="${dir#$WORKDIR/}"
-  local processed_dir="$WORKDIR/processed_pdfs/$relative_dir"  
+  # Move processed PDF and images, preserving folder structure
+  relative_dir="${dir#$WORKDIR/}"                     
+  local processed_dir="$WORKDIR/processed_pdfs/$relative_dir"
   mkdir -p "$processed_dir"
-  mv "$pdf" "$processed_dir/"
+
+  local target="$processed_dir/$(basename "$pdf")"
+  if [[ -f "$target" ]]; then
+    echo "WARNING: $target already exists, skipping move." | tee -a "$ERRFILE"
+  else
+    if mv "$pdf" "$processed_dir/"; then
+      echo "Moved $pdf -> $processed_dir/" | tee -a "$LOGFILE"
+    else
+      echo "ERROR: failed to move $pdf" | tee -a "$ERRFILE"
+      # --- cleanup images if PDF move fails ---
+      rm -f "${dir}/${prefix}"_*."$OUTFMT"
+      return 1
+    fi
+  fi
 }
 
 export -f process_pdf
