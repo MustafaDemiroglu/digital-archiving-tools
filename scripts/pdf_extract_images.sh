@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 2.5
+# Version 2.6
 # Author : Mustafa Demiropglu
 #
 # Description:
@@ -58,8 +58,7 @@ if [[ "$OUTFMT" != "tif" && "$OUTFMT" != "jpg" && "$OUTFMT" != "all" ]]; then
   exit 1
 fi
 
-# --- Prepare folders and Clear log files from previous runs ---
-mkdir -p "$TMPPDFDIR"
+# --- Clear log files from previous runs ---
 : > "$LOGFILE"
 : > "$ERRFILE"
 
@@ -164,8 +163,9 @@ process_pdf() {
 
   echo "SUCCESS: $pdf extracted correctly ($imgcount pages)" | tee -a "$LOGFILE"
   
-  # Move processed PDF and images, preserving folder structure
-  local processed_dir="$TMPPDFDIR/${dir}"
+  # Move processed PDF and images, preserving folder structure (relative to WORKDIR)
+  relative_dir="${dir#$WORKDIR/}"
+  local processed_dir="$TMPPDFDIR/$relative_dir"
   mkdir -p "$processed_dir"
   mv "$pdf" "$processed_dir/"
 }
