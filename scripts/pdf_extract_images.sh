@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 2.6
+# Version 2.7
 # Author : Mustafa Demiropglu
 #
 # Description:
@@ -165,7 +165,7 @@ process_pdf() {
   
   # Move processed PDF and images, preserving folder structure (relative to WORKDIR)
   relative_dir="${dir#$WORKDIR/}"
-  local processed_dir="$TMPPDFDIR/$relative_dir"
+  local processed_dir="$WORKDIR/processed_pdfs/$relative_dir"  
   mkdir -p "$processed_dir"
   mv "$pdf" "$processed_dir/"
 }
