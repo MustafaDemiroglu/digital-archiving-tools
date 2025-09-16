@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 2.2
+# Version 2.3
 # Author : Mustafa Demiropglu
 #
 # Description:
@@ -36,7 +36,7 @@ set -euo pipefail
 
 # --- Setup ---
 WORKDIR="${1:-$(pwd)}"    # Path to work on, default = current dir
-OUTFMT="$2"               # Desired image format (tif or jpg)
+OUTFMT="$2:-"               # Desired image format (tif or jpg)
 LOGFILE="pdf_extract_log.txt"
 ERRFILE="pdf_extract_error.txt"
 TMPPDFDIR="./processed_pdfs"
@@ -48,12 +48,12 @@ flock -n 200 || { echo "Another instance is running. Exiting."; exit 1; }
 
 # --- Ask for format if not provided ---
 if [[ -z "$OUTFMT" ]]; then
-  read -p "Which output format do you want (tif/jpg)? " OUTFMT
+  read -p "Which output format do you want (tif/jpg/all)? " OUTFMT
 fi
 OUTFMT=$(echo "$OUTFMT" | tr '[:upper:]' '[:lower:]')
 
-if [[ "$OUTFMT" != "tif" && "$OUTFMT" != "jpg" ]]; then
-  echo "Error: output format must be 'tif' or 'jpg'" | tee -a "$ERRFILE"
+if [[ "$OUTFMT" != "tif" && "$OUTFMT" != "jpg" && "$OUTFMT" != "all" ]]; then
+  echo "Error: output format must be 'tif' or 'jpg' or 'all'" | tee -a "$ERRFILE"
   exit 1
 fi
 
@@ -107,11 +107,13 @@ process_pdf() {
   # sanitize prefix (replace spaces with underscore to be safe)
   prefix="${prefix// /_}"
 
-  # Extract images
+  # --- Extract images ---
   if [[ "$OUTFMT" == "tif" ]]; then
     pdfimages -tiff "$pdf" "${dir}/${prefix}" 2>>"$ERRFILE"
+  elif [[ "$OUTFMT" == "jpg" ]]; then
+    pdfimages -j "$pdf" "${dir}/${prefix}" 2>>"$ERRFILE"
   else
-    pdfimages -jpeg "$pdf" "${dir}/${prefix}" 2>>"$ERRFILE"
+    pdfimages -all "$pdf" "${dir}/${prefix}" 2>>"$ERRFILE"
   fi
   local status=$?
 
