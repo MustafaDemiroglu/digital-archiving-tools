@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 2.3
+# Version 2.4
 # Author : Mustafa Demiropglu
 #
 # Description:
@@ -16,6 +16,7 @@
 #   2. You can choose the output format (tif or jpg). If not provided, the script asks you.
 #   3. Output images are named like: haus_bestand_nr_stück_0001.tif / 0001.jpg(based on folder hierarchy)
 #      If not enough folder depth → fallback: pdfname_0001.tif
+#	   If a folder contains >1 PDF, always use pdfname_0001.ext
 #   4. After extraction, checks if number of images = number of PDF pages.
 #      - If mismatch → cleanup images, PDF stays in place, error logged.
 #      - If equal → PDF moved to "processed_pdfs".
@@ -36,7 +37,7 @@ set -euo pipefail
 
 # --- Setup ---
 WORKDIR="${1:-$(pwd)}"    # Path to work on, default = current dir
-OUTFMT="$2:-"               # Desired image format (tif or jpg)
+OUTFMT="${2:-}"               # Desired image format (tif or jpg)
 LOGFILE="pdf_extract_log.txt"
 ERRFILE="pdf_extract_error.txt"
 TMPPDFDIR="./processed_pdfs"
@@ -57,8 +58,7 @@ if [[ "$OUTFMT" != "tif" && "$OUTFMT" != "jpg" && "$OUTFMT" != "all" ]]; then
   exit 1
 fi
 
-# --- Prepare folders and Clear log files from previous runs ---
-mkdir -p "$TMPPDFDIR"
+# --- Clear log files from previous runs ---
 : > "$LOGFILE"
 : > "$ERRFILE"
 
@@ -84,26 +84,32 @@ process_pdf() {
   pages=$(pdfinfo "$pdf" 2>/dev/null | awk '/Pages:/ {print $2}')
   if [[ -z "$pages" ]]; then
     echo "ERROR: cannot read page count for $pdf" | tee -a "$ERRFILE"
-    return
+    return 1
   fi
-
+  
   # Build prefix from directory structure:
+  # If a folder contains more than one PDF, always use pdfname_0001.ext naming
   # if there are at least two directory levels above the PDF's folder,
   # use grandparent_parent_nr_currentdir (e.g. hstam_karten_nr_cenk)
   # otherwise fallback to PDF base name
-  local curr_dirname parent grandparent_dir grandparent prefix
-  curr_dirname=$(basename "$dir")                       # e.g. cenk
-  parent=$(basename "$(dirname "$dir")")                # e.g. kargo
-  grandparent_dir=$(dirname "$(dirname "$dir")")       # e.g. .../hstam
-  grandparent=$(basename "$grandparent_dir")           # e.g. hstam
+  local pdf_count
+  pdf_count=$(find "$dir" -maxdepth 1 -type f -iname "*.pdf" | wc -l)
+  local prefix
 
-  # if grandparent is valid (not root or empty), build the requested prefix
-  if [[ -n "$grandparent" && "$grandparent" != "/" && "$grandparent" != "." ]]; then
-    prefix="${grandparent}_${parent}_nr_${curr_dirname}"
+  if [[ "$pdf_count" -gt 1 ]]; then
+    prefix="$base"
   else
-    prefix="${base}"
+    curr_dirname=$(basename "$dir")
+    parent=$(basename "$(dirname "$dir")")
+    grandparent_dir=$(dirname "$(dirname "$dir")")
+    grandparent=$(basename "$grandparent_dir")
+    if [[ -n "$grandparent" && "$grandparent" != "/" && "$grandparent" != "." ]]; then
+      prefix="${grandparent}_${parent}_nr_${curr_dirname}"
+    else
+      prefix="${base}"
+    fi
   fi
-
+ 
   # sanitize prefix (replace spaces with underscore to be safe)
   prefix="${prefix// /_}"
 
@@ -118,8 +124,8 @@ process_pdf() {
   local status=$?
 
   if [[ $status -ne 0 ]]; then
-    echo "ERROR: failed to extract $pdf" | tee -a "$ERRFILE"
-    return
+    echo "ERROR: no images extracted from $pdf" | tee -a "$ERRFILE"
+    return 1
   fi
 
   # List extracted images
@@ -135,7 +141,7 @@ process_pdf() {
 
   if [[ "$imgcount" -eq 0 ]]; then
     echo "ERROR: no images extracted from $pdf" | tee -a "$ERRFILE"
-    return
+    return 1
   fi
 
   # Compare page count and image count
@@ -143,7 +149,7 @@ process_pdf() {
     # cleanup wrong images
     rm -f $extracted
     echo "ERROR: mismatch in $pdf (expected $pages, got $imgcount)" | tee -a "$ERRFILE"
-    return
+    return 1
   fi
 
   # Rename extracted files with 0001, 0002...
@@ -156,22 +162,18 @@ process_pdf() {
   done
 
   echo "SUCCESS: $pdf extracted correctly ($imgcount pages)" | tee -a "$LOGFILE"
-  mv "$pdf" "$TMPPDFDIR/"
+  
+  # Move processed PDF and images, preserving folder structure
+  local processed_dir="$TMPPDFDIR/${dir}"
+  mkdir -p "$processed_dir"
+  mv "$pdf" "$processed_dir/"
 }
 
 export -f process_pdf
-export LOGFILE ERRFILE TMPPDFDIR OUTFMT
+export LOGFILE ERRFILE OUTFMT
 
-# Run in parallel up to CPU count
-find "$WORKDIR" -type f -iname "*.pdf" | while read -r pdf; do
-  process_pdf "$pdf" &
-  # Limit parallel jobs
-  while (( $(jobs -r | wc -l) >= CPUCOUNT )); do
-    wait -n
-  done
-done
-
-wait
+# Find all PDFs and process in parallel with xargs -P
+find "$WORKDIR" -type f -iname "*.pdf" | xargs -I{} -P "$CPUCOUNT" bash -c 'process_pdf "$@"' _ {}
 
 echo
 echo "Done. Check $LOGFILE and $ERRFILE for details."
