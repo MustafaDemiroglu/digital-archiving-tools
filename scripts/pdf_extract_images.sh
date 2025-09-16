@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 2.10
+# Version 2.11
 # Author : Mustafa Demiropglu
 #
 # Description:
@@ -161,46 +161,45 @@ process_pdf() {
   echo "SUCCESS: $pdf extracted correctly ($imgcount pages)" | tee -a "$LOGFILE"
   
   # Move processed PDF and images, preserving folder structure
-  local relative_dir="${dir#$WORKDIR}"
-  relative_dir="${relative_dir#/}"  # Remove leading slash if present
-  
-  # If relative_dir is empty (PDF is in WORKDIR root), use just processed_pdfs
-  if [[ -z "$relative_dir" ]]; then
-    local processed_dir="$WORKDIR/processed_pdfs"
-  else
-    local processed_dir="$WORKDIR/processed_pdfs/$relative_dir"
-  fi
-  mkdir -p "$processed_dir"
+local relative_dir="${dir#$WORKDIR}"
+relative_dir="${relative_dir#/}"  # Remove leading slash if present
 
-  local target="$processed_dir/$(basename "$pdf")"
-  if [[ -f "$target" ]]; then
-    echo "WARNING: $target already exists, skipping move." | tee -a "$ERRFILE"
-  else
-    # Debug: show what we're trying to create
-    echo "DEBUG: WORKDIR=$WORKDIR" | tee -a "$LOGFILE"
-    echo "DEBUG: dir=$dir" | tee -a "$LOGFILE"
-    echo "DEBUG: relative_dir='$relative_dir'" | tee -a "$LOGFILE"
-    echo "DEBUG: processed_dir=$processed_dir" | tee -a "$LOGFILE"
-    if mkdir -p "$processed_dir" 2>>"$ERRFILE"; then
-      if mv "$pdf" "$processed_dir/"; then
-        echo "Moved $pdf -> $processed_dir/" | tee -a "$LOGFILE"
-      else
-        echo "ERROR: failed to move $pdf to $processed_dir/" | tee -a "$ERRFILE"
-        # --- cleanup images if PDF move fails (exclude PDF files to prevent accidental deletion) ---
-        find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
-        return 1
-      fi
+# If relative_dir is empty (PDF is in WORKDIR root), use just processed_pdfs
+if [[ -z "$relative_dir" ]]; then
+  local processed_dir="$WORKDIR/processed_pdfs"
+else
+  local processed_dir="$WORKDIR/processed_pdfs/$relative_dir"
+fi
+
+local target="$processed_dir/$(basename "$pdf")"
+if [[ -f "$target" ]]; then
+  echo "WARNING: $target already exists, skipping move." | tee -a "$ERRFILE"
+else
+  # Debug: show what we're trying to create
+  echo "DEBUG: WORKDIR=$WORKDIR" | tee -a "$LOGFILE"
+  echo "DEBUG: dir=$dir" | tee -a "$LOGFILE"
+  echo "DEBUG: relative_dir='$relative_dir'" | tee -a "$LOGFILE"
+  echo "DEBUG: processed_dir=$processed_dir" | tee -a "$LOGFILE"
+  if mkdir -p "$processed_dir" 2>>"$ERRFILE"; then
+    if mv "$pdf" "$processed_dir/"; then
+      echo "Moved $pdf -> $processed_dir/" | tee -a "$LOGFILE"
     else
-      echo "ERROR: cannot create directory $processed_dir" | tee -a "$ERRFILE"
+      echo "ERROR: failed to move $pdf to $processed_dir/" | tee -a "$ERRFILE"
       # --- cleanup images if PDF move fails (exclude PDF files to prevent accidental deletion) ---
       find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
       return 1
     fi
+  else
+    echo "ERROR: cannot create directory $processed_dir" | tee -a "$ERRFILE"
+    # --- cleanup images if PDF move fails (exclude PDF files to prevent accidental deletion) ---
+    find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
+    return 1
   fi
+fi
 }
 
 export -f process_pdf
-export LOGFILE ERRFILE OUTFMT
+export LOGFILE ERRFILE OUTFMT WORKDIR
 
 # Find all PDFs and process in parallel with xargs -P , exception:processed_pdfs
 find "$WORKDIR" -type f -iname "*.pdf" -not -path "*/processed_pdfs/*" | xargs -I{} -P "$CPUCOUNT" bash -c 'process_pdf "$@"' _ {}
