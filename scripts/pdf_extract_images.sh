@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 3.1
+# Version 3.2
 # Author : Mustafa Demiropglu
 #
 # Description:
@@ -82,6 +82,10 @@ process_pdf() {
   # Count pages
   local pages
   pages=$(pdfinfo "$pdf" 2>/dev/null | awk '/Pages:/ {print $2}')
+  if ! pages=$(pdfinfo "$pdf" 2>/dev/null | awk '/Pages:/ {print $2}'); then
+  echo "ERROR: pdfinfo failed for $pdf" | tee -a "$ERRFILE"
+  return 1
+  fi
   if [[ -z "$pages" ]]; then
     echo "ERROR: cannot read page count for $pdf" | tee -a "$ERRFILE"
     return 1
@@ -161,37 +165,26 @@ process_pdf() {
   echo "SUCCESS: $pdf extracted correctly ($imgcount pages)" | tee -a "$LOGFILE"
   
   # Move processed PDF and images, preserving folder structure
-  local relative_dir="${dir#$WORKDIR}"
-  relative_dir="${relative_dir#/}"  # Remove leading slash if present
-
-  # If relative_dir is empty (PDF is in WORKDIR root), use just processed_pdfs
-  if [[ -z "$relative_dir" ]]; then
-    local processed_dir="$WORKDIR/processed_pdfs"
-  else
-    local processed_dir="$WORKDIR/processed_pdfs/$relative_dir"
-  fi
+  processed_dir="$WORKDIR/processed_pdfs/$grandparent/$parent"
 
   local target="$processed_dir/$(basename "$pdf")"
   if [[ -f "$target" ]]; then
     echo "WARNING: $target already exists, skipping move." | tee -a "$ERRFILE"
   else
-    # Debug: show what we're trying to create
-    echo "DEBUG: WORKDIR=$WORKDIR" | tee -a "$LOGFILE"
-    echo "DEBUG: dir=$dir" | tee -a "$LOGFILE"
-    echo "DEBUG: relative_dir='$relative_dir'" | tee -a "$LOGFILE"
     echo "DEBUG: processed_dir=$processed_dir" | tee -a "$LOGFILE"
-    if mkdir -p "$processed_dir" 2>>"$ERRFILE"; then
-      if mv "$pdf" "$processed_dir/"; then
-        echo "Moved $pdf -> $processed_dir/" | tee -a "$LOGFILE"
-      else
-        echo "ERROR: failed to move $pdf to $processed_dir/" | tee -a "$ERRFILE"
-        # --- cleanup images if PDF move fails (exclude PDF files to prevent accidental deletion) ---
-        find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
-        return 1
-      fi
-    else
+
+    mkdir -p "$processed_dir" 2>>"$ERRFILE" || {
       echo "ERROR: cannot create directory $processed_dir" | tee -a "$ERRFILE"
-      # --- cleanup images if PDF move fails (exclude PDF files to prevent accidental deletion) ---
+      # cleanup images if PDF move fails
+      find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
+      return 1
+    }
+
+    if mv "$pdf" "$processed_dir/"; then
+      echo "Moved $pdf -> $processed_dir/" | tee -a "$LOGFILE"
+    else
+      echo "ERROR: failed to move $pdf to $processed_dir/" | tee -a "$ERRFILE"
+      # cleanup images if PDF move fails
       find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
       return 1
     fi
