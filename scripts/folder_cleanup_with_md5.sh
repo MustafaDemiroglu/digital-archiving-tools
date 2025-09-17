@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_cleanup_with_md5.sh
-# Version: 2.3
+# Version: 2.4
 # Author: Mustafa Demiroglu
 # Purpose     : 
 #   Move redundant files/folders (instead of deleting) into a temporary folder
@@ -104,12 +104,24 @@ echo "Starting cleanup before move ingest to cepheus" | tee -a "$LOG_FILE"
 echo "Finding folders to check... It can take some time ..." | tee -a "$LOG_FILE"
 
 # Skip empty folders
-mapfile -t folders < <(find . -type d -mindepth 1 ! -empty ! -exec sh -c 'find "$1" -mindepth 1 -type d | grep -q .' sh {} \; -print | sort)
+#mapfile -t folders < <(find . -mindepth 1 -type d ! -empty ! -exec sh -c 'find "$1" -mindepth 1 -type d | grep -q .' sh {} \; -print | sort)
 
-echo "Checking folders started." | tee -a "$LOG_FILE"
-for folder in "${folders[@]}"; do
-  process_folder "$folder"
-done
+#echo "Checking folders started." | tee -a "$LOG_FILE"
+#for folder in "${folders[@]}"; do
+#  process_folder "$folder"
+#done
+
+
+
+# Skip empty folders
+mapfile -t folders < <(find . -mindepth 1 -type d -print0 | sort)
+
+echo "Checking folders started. Starting parallel processing" | tee -a "$LOG_FILE"
+export -f process_folder
+echo "${folders[@]}" | xargs -P $(nproc) -I {} bash -c 'process_folder "$@"' _ {}
+
+
+
 
 # MD5 checksum for the moved files
 echo "Checksum for $TMP_DIR started " | tee -a "$LOG_FILE"
