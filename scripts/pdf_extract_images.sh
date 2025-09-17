@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 3.2
+# Version 3.3
 # Author : Mustafa Demiropglu
 #
 # Description:
@@ -165,21 +165,18 @@ process_pdf() {
   echo "SUCCESS: $pdf extracted correctly ($imgcount pages)" | tee -a "$LOGFILE"
   
   # Move processed PDF and images, preserving folder structure
-  processed_dir="$WORKDIR/processed_pdfs/$grandparent/$parent"
+  processed_dir="$WORKDIR/processed_pdfs/$grandparent/$parent/$curr_dirname"
 
   local target="$processed_dir/$(basename "$pdf")"
   if [[ -f "$target" ]]; then
     echo "WARNING: $target already exists, skipping move." | tee -a "$ERRFILE"
   else
-    echo "DEBUG: processed_dir=$processed_dir" | tee -a "$LOGFILE"
-
     mkdir -p "$processed_dir" 2>>"$ERRFILE" || {
       echo "ERROR: cannot create directory $processed_dir" | tee -a "$ERRFILE"
       # cleanup images if PDF move fails
       find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
       return 1
     }
-
     if mv "$pdf" "$processed_dir/"; then
       echo "Moved $pdf -> $processed_dir/" | tee -a "$LOGFILE"
     else
