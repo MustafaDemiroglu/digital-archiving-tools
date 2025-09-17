@@ -103,7 +103,7 @@ process_folder() {
 echo "Starting cleanup before move ingest to cepheus" | tee -a "$LOG_FILE"
 echo "Finding folders to check... It can take some time ..." | tee -a "$LOG_FILE"
 
-Skip empty folders
+# Skip empty folders
 mapfile -t folders < <(find . -mindepth 1 -type d ! -empty ! -exec sh -c 'find "$1" -mindepth 1 -type d | grep -q .' sh {} \; -print | sort)
 
 echo "Checking folders started." | tee -a "$LOG_FILE"
