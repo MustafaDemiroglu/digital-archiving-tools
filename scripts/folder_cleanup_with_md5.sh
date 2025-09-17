@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_cleanup_with_md5.sh
-# Version: 2.1
+# Version: 2.2
 # Author: Mustafa Demiroglu
 # Purpose     : 
 #   Move redundant files/folders (instead of deleting) into a temporary folder
@@ -76,7 +76,7 @@ process_folder() {
     echo "  → All files identical. Moving entire folder." | tee -a "$LOG_FILE"
     dest="$TMP_DIR/$folder_clean"
     mkdir -p "$(dirname "$dest")"
-    rsync -av --remove-source-files "$folder_clean/" "$dest" | tee -a "$LOG_FILE"
+    rsync -av --remove-source-files "$folder_clean" "$dest" | tee -a "$LOG_FILE"
     # Remove MD5 entries for entire folder if file provided
     if [[ -f "$MD5_FILE" ]]; then
       grep -v "$folder_clean/" "$MD5_FILE" > "${MD5_FILE}.tmp" && mv "${MD5_FILE}.tmp" "$MD5_FILE"
@@ -108,7 +108,11 @@ mapfile -t folders < <(find . -type d -mindepth 1 ! -empty ! -exec sh -c 'find "
 
 # Using xargs to run process_folder in parallel (based on CPU cores)
 echo "Checking folders started. Starting parallel processing" | tee -a "$LOG_FILE"
-export -f process_folder  # Make the function available to subshells
+
+# Make the function available to subshells
+export -f trim
+export -f process_folder
+
 echo "${folders[@]}" | xargs -n 1 -P $(nproc) -I {} bash -c 'process_folder "$@"' _ {}
 
 # MD5 checksum for the moved files
