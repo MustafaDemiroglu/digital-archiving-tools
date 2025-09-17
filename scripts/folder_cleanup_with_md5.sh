@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_cleanup_with_md5.sh
-# Version: 2.2
+# Version: 2.3
 # Author: Mustafa Demiroglu
 # Purpose     : 
 #   Move redundant files/folders (instead of deleting) into a temporary folder
@@ -106,14 +106,10 @@ echo "Finding folders to check... It can take some time ..." | tee -a "$LOG_FILE
 # Skip empty folders
 mapfile -t folders < <(find . -type d -mindepth 1 ! -empty ! -exec sh -c 'find "$1" -mindepth 1 -type d | grep -q .' sh {} \; -print | sort)
 
-# Using xargs to run process_folder in parallel (based on CPU cores)
-echo "Checking folders started. Starting parallel processing" | tee -a "$LOG_FILE"
-
-# Make the function available to subshells
-export -f trim
-export -f process_folder
-
-echo "${folders[@]}" | xargs -n 1 -P $(nproc) -I {} bash -c 'process_folder "$@"' _ {}
+echo "Checking folders started." | tee -a "$LOG_FILE"
+for folder in "${folders[@]}"; do
+  process_folder "$folder"
+done
 
 # MD5 checksum for the moved files
 echo "Checksum for $TMP_DIR started " | tee -a "$LOG_FILE"
