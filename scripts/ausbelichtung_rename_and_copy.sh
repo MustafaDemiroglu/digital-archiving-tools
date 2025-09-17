@@ -5,8 +5,7 @@
 #
 # Description:
 #   This script helps with consistent renaming and copying operations in deep
-#   folder structures. It works under Linux, macOS, and WSL (Windows Subsystem
-#   for Linux). The script is intended to be *simple, portable, and easy to use*.
+#   folder structures. 
 #
 # Features:
 #   - Verbose mode (-v| --verbose): Print detailed information about every operation
