@@ -70,6 +70,14 @@ echo "Running in sequential mode (one PDF at a time). It can take a while to pro
 
 # --- Process PDF ---
 process_pdf() {
+
+
+echo "INSIDE FUNCTION - START"  # BU SATIRI EKLE
+  local pdf="$1"
+  echo "INSIDE FUNCTION - pdf=$pdf"  # BU SATIRI EKLE
+
+
+
   local pdf="$1"
   local base=$(basename "$pdf" .pdf)
   local dir=$(dirname "$pdf")
@@ -260,31 +268,26 @@ failed_pdfs=0
 mapfile -t pdf_array < <(find "$WORKDIR" -type f -iname "*.pdf" -not -path "*/$TMPPDFDIR/*")
 
 
-echo "DEBUG: Testing process_pdf function..."
-if declare -F process_pdf >/dev/null; then
-    echo "DEBUG: process_pdf function exists"
-else
-    echo "ERROR: process_pdf function NOT FOUND!"
-    exit 1
-fi
-
-# Basit test:
-echo "DEBUG: Calling process_pdf with test..."
-# process_pdf "/tmp/test.pdf" || echo "Function call failed"
-
-
-
 for pdf in "${pdf_array[@]}"; do
   echo "DEBUG: Found PDF: $pdf"
   ((total_pdfs++))
   echo "Progress: Processing PDF $total_pdfs - $(basename "$pdf")"
   
-  if process_pdf "$pdf"; then
+  echo "DEBUG: About to call process_pdf..."
+  set +e  # Error handling'i kapat
+  process_pdf "$pdf"
+  local exit_code=$?
+  set -e  # Error handling'i aç
+  
+  echo "DEBUG: process_pdf exit code: $exit_code"
+  
+  if [[ $exit_code -eq 0 ]]; then
     ((processed_pdfs++))
   else
     ((failed_pdfs++))
   fi
 done
+
 
 # --- Final summary ---
 echo | tee -a "$LOGFILE"
@@ -316,3 +319,15 @@ fi
 flock -u 200
 
 echo "Done. Check log files in $WORKDIR/$TMPPDFDIR/ for details."
+
+
+
+
+
+
+# Script'in sonuna ekle:
+echo "MANUAL TEST:"
+set +e
+process_pdf "/media/cepheus/ingest/hdd_upload/2025-08-20_Elements_hstam_Mustafas_Bearbeitung/hstam/kat._ii/weyhers_4/hstam_kat._ii_nr_weyhers_4.pdf"
+echo "Manual test exit code: $?"
+set -e
