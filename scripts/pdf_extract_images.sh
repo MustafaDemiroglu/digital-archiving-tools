@@ -1,14 +1,13 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 4.2
+# Version 4.4
 # Author : Mustafa Demiroglu
 #
 # Description:
 #   This script extracts each page from PDF files into separate images using 'pdfimages'.
 #   It supports both TIFF (.tif) and JPEG (.jpg).
 #   The script is designed to run on Linux, macOS, or WSL (Windows Subsystem).
-#   Parallelized based on CPU count with per-file locking to prevent race conditions.
 #   Concurrency lock prevents multiple instances.
 #
 # How it works:
@@ -30,7 +29,6 @@
 #   ./pdf_extract_images.sh                # process PDFs in current dir
 #   ./pdf_extract_images.sh /path/to/data  # process PDFs in given folder
 #   ./pdf_extract_images.sh /data jpg      # extract as jpg instead of tif
-#
 ###############################################################################
 
 set -euo pipefail
@@ -41,12 +39,8 @@ OUTFMT="${2:-}"               # Desired image format (tif or jpg)
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 LOGFILE="log_pdf_extract_${TIMESTAMP}.txt"
 ERRFILE="error_pdf_extract_${TIMESTAMP}.txt"
-TMPPDFDIR="./processed_pdfs"
+TMPPDFDIR="processed_pdfs"
 LOCKFILE="/tmp/pdf_extract.lock"
-LOCKDIR="/tmp/pdf_extract_locks"
-
-# Create lock directory for individual file locks
-mkdir -p "$LOCKDIR"
 
 # --- Acquire main lock ---
 exec 200>"$LOCKFILE"
@@ -63,7 +57,8 @@ if [[ "$OUTFMT" != "tif" && "$OUTFMT" != "jpg" && "$OUTFMT" != "all" ]]; then
   exit 1
 fi
 
-# --- Clear log files from previous runs ---
+# --- Create processed_pdfs directory and Clear log files from previous runs ---
+mkdir -p "$WORKDIR/$TMPPDFDIR"
 : > "$LOGFILE"
 : > "$ERRFILE"
 
@@ -71,35 +66,13 @@ echo "Starting PDF extraction in: $WORKDIR" | tee -a "$LOGFILE"
 echo "Output format: $OUTFMT" | tee -a "$LOGFILE"
 echo "Log file: $LOGFILE" | tee -a "$LOGFILE"
 echo "Error file: $ERRFILE" | tee -a "$LOGFILE"
-echo "It can take a while to process all PDFs" | tee -a "$LOGFILE"
-
-CPUCOUNT=$(nproc)
-echo "Using up to $CPUCOUNT parallel jobs." | tee -a "$LOGFILE"
+echo "Running in sequential mode (one PDF at a time). It can take a while to process all PDFs" | tee -a "$LOGFILE"
 
 # --- Process PDF ---
 process_pdf() {
   local pdf="$1"
   local base=$(basename "$pdf" .pdf)
   local dir=$(dirname "$pdf")
-
-  # Create a unique lock file for this PDF to prevent multiple processes working on same file
-  local pdf_hash=$(echo "$pdf" | md5sum | cut -d' ' -f1)
-  local pdf_lock_file="$LOCKDIR/pdf_${pdf_hash}.lock"
-  
-  # Try to acquire exclusive lock for this specific PDF file
-  exec 201>"$pdf_lock_file"
-  if ! flock -n 201; then
-    echo "SKIPPED: $pdf (already being processed by another worker)" >> "$LOGFILE"
-    return 0
-  fi
-  
-  # Double check if PDF still exists (might have been processed by another worker)
-  if [[ ! -f "$pdf" ]]; then
-    echo "SKIPPED: $pdf (file no longer exists, likely processed by another worker)" >> "$LOGFILE"
-    flock -u 201
-    rm -f "$pdf_lock_file"
-    return 0
-  fi
   
   echo "Processing: $pdf" >> "$LOGFILE"
 
@@ -107,14 +80,10 @@ process_pdf() {
   local pages
   if ! pages=$(pdfinfo "$pdf" 2>/dev/null | awk '/Pages:/ {print $2}'); then
     echo "ERROR: pdfinfo failed for $pdf" >> "$ERRFILE"
-    flock -u 201
-    rm -f "$pdf_lock_file"
     return 1
   fi
   if [[ -z "$pages" ]]; then
     echo "ERROR: cannot read page count for $pdf" >> "$ERRFILE"
-    flock -u 201
-    rm -f "$pdf_lock_file"
     return 1
   fi
   
@@ -122,10 +91,10 @@ process_pdf() {
   local pdf_count
   pdf_count=$(find "$dir" -maxdepth 1 -type f -iname "*.pdf" | wc -l)
   local prefix
-  curr_dirname=$(basename "$dir")
-  parent=$(basename "$(dirname "$dir")")
-  grandparent_dir=$(dirname "$(dirname "$dir")")
-  grandparent=$(basename "$grandparent_dir")
+  local curr_dirname=$(basename "$dir")
+  local parent=$(basename "$(dirname "$dir")")  
+  local grandparent_dir=$(dirname "$(dirname "$dir")")
+  local grandparent=$(basename "$grandparent_dir")
 
   if [[ "$pdf_count" -gt 1 ]]; then
     prefix="$base"
@@ -156,8 +125,6 @@ process_pdf() {
     done
     
     if [[ "$conflict_found" == true ]]; then
-      flock -u 201
-      rm -f "$pdf_lock_file"
       return 1
     fi
     
@@ -212,48 +179,36 @@ process_pdf() {
     echo "ERROR: pdfimages failed for $pdf" >> "$ERRFILE"
     # Cleanup temporary files
     find "$dir" -name "${temp_prefix}-*" -type f -delete 2>/dev/null || true
-    flock -u 201
-    rm -f "$pdf_lock_file"
     return 1
   fi
 
-  # List extracted images
+  # List and Count extracted images
   local extracted
-  extracted=$(ls "${dir}/${temp_prefix}"-* 2>/dev/null || true)
-  
-  # Count extracted images
+  extracted=$(ls "${dir}/${temp_prefix}"-* 2>/dev/null || true)  
   local imgcount
   imgcount=$(echo "$extracted" | grep -c . || echo 0)
 
   if [[ "$imgcount" -eq 0 ]]; then
     echo "ERROR: no images extracted from $pdf" >> "$ERRFILE"
-    flock -u 201
-    rm -f "$pdf_lock_file"
     return 1
   fi
 
-  # Compare page count and image count
+  # Compare page count and image count and if not cleanup wrong images
   if [[ "$imgcount" -ne "$pages" ]]; then
-    # cleanup wrong images
     find "$dir" -name "${temp_prefix}-*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
     echo "ERROR: mismatch in $pdf (expected $pages, got $imgcount)" >> "$ERRFILE"
-    flock -u 201
-    rm -f "$pdf_lock_file"
     return 1
   fi
 
-  # Rename extracted files with final names (0001, 0002...)
+  # Rename extracted files with final names (0001, 0002...) and Cleanup on failure
   local counter=1
   for file in $extracted; do
     local ext="${file##*.}"
     local newname=$(printf "%s_%04d.%s" "${prefix}" "$counter" "$ext")
     if ! mv "$file" "${dir}/${newname}"; then
       echo "ERROR: failed to rename $file to $newname" >> "$ERRFILE"
-      # Cleanup on failure
       find "$dir" -name "${temp_prefix}-*" -type f -delete 2>/dev/null || true
       find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
-      flock -u 201
-      rm -f "$pdf_lock_file"
       return 1
     fi
     counter=$((counter+1))
@@ -262,82 +217,83 @@ process_pdf() {
   echo "SUCCESS: $pdf extracted correctly ($imgcount pages)" >> "$LOGFILE"
   
   # Move processed PDF, preserving folder structure
-  local processed_dir="$WORKDIR/processed_pdfs"
+  local processed_dir="$WORKDIR/$TMPPDFDIR"
   if [[ -n "$grandparent" && "$grandparent" != "/" && "$grandparent" != "." ]]; then
     processed_dir="$processed_dir/$grandparent/$parent/$curr_dirname"
   else
     processed_dir="$processed_dir/$parent/$curr_dirname"
   fi
 
-  local target="$processed_dir/$(basename "$pdf")"
-  if [[ -f "$target" ]]; then
-    echo "WARNING: $target already exists, skipping move." >> "$ERRFILE"
-  else
+  # Create directory structure if needed
+  if [[ ! -d "$processed_dir" ]]; then
     if ! mkdir -p "$processed_dir" 2>>"$ERRFILE"; then
       echo "ERROR: cannot create directory $processed_dir" >> "$ERRFILE"
-      # cleanup images if PDF move fails
       find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
-      flock -u 201
-      rm -f "$pdf_lock_file"
-      return 1
-    fi
-    
-    if mv "$pdf" "$processed_dir/"; then
-      echo "Moved $pdf -> $processed_dir/" >> "$LOGFILE"
-    else
-      echo "ERROR: failed to move $pdf to $processed_dir/" >> "$ERRFILE"
-      # cleanup images if PDF move fails
-      find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
-      flock -u 201
-      rm -f "$pdf_lock_file"
       return 1
     fi
   fi
   
-  # Release the lock for this PDF
-  flock -u 201
+  if [[ -f "$target" ]]; then
+  local counter=1
+  while [[ -f "${target%.pdf}_duplicate_${counter}.pdf" ]]; do
+    ((counter++))
+  done
+  target="${target%.pdf}_duplicate_${counter}.pdf"
+  echo "WARNING: Renamed duplicate to $(basename "$target")" >> "$ERRFILE"
+  fi
   
-  # Remove the lock file
-  rm -f "$pdf_lock_file"
+  if mv "$pdf" "$target"; then
+    echo "Moved $pdf -> $target" >> "$LOGFILE"
+  else
+    echo "ERROR: failed to move $pdf to $target" >> "$ERRFILE"
+    find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
+    return 1
+  fi
 }
 
-export -f process_pdf
-export LOGFILE ERRFILE OUTFMT WORKDIR LOCKDIR
+# --- Main processing loop ---
+total_pdfs=0
+processed_pdfs=0
+failed_pdfs=0
 
-# Find all PDFs and process in parallel with xargs -P, excluding processed_pdfs
-find "$WORKDIR" -type f -iname "*.pdf" -not -path "*/processed_pdfs/*" | \
-  xargs -I{} -P "$CPUCOUNT" bash -c 'process_pdf "$@"' _ {}
-
-# Wait for all background processes to complete
-wait
-
-# Create processed_pdfs directory if it doesn't exist
-mkdir -p "$WORKDIR/processed_pdfs"
-
-# Move log and error files to processed_pdfs directory
-if [[ -f "$LOGFILE" ]]; then
-  if cp "$LOGFILE" "$WORKDIR/processed_pdfs/"; then
-    rm -f "$LOGFILE"
-    echo "Moved log file to $WORKDIR/processed_pdfs/$LOGFILE"
+while IFS= read -r -d '' pdf; do
+  ((total_pdfs++))
+  echo "Progress: Processing PDF $total_pdfs - $(basename "$pdf")"
+  
+  if process_pdf "$pdf"; then
+    ((processed_pdfs++))
   else
-    echo "ERROR: Failed to move log file to processed_pdfs directory"
+    ((failed_pdfs++))
+  fi
+done < <(find "$WORKDIR" -type f -iname "*.pdf" -not -path "*/$TMPPDFDIR/*" -print0)
+
+# --- Final summary ---
+echo | tee -a "$LOGFILE"
+echo "=== PROCESSING SUMMARY ===" | tee -a "$LOGFILE"
+echo "Total PDFs found: $total_pdfs" | tee -a "$LOGFILE"
+echo "Successfully processed: $processed_pdfs" | tee -a "$LOGFILE"
+echo "Failed: $failed_pdfs" | tee -a "$LOGFILE"
+
+# Move log files to processed_pdfs with proper error handling
+if [[ -f "$LOGFILE" ]]; then
+  if cp "$LOGFILE" "$WORKDIR/$TMPPDFDIR/"; then
+    rm -f "$LOGFILE"
+    echo "Moved log file to $WORKDIR/$TMPPDFDIR/"
+  else
+    echo "WARNING: Failed to move log file to $TMPPDFDIR directory"
   fi
 fi
 
 if [[ -f "$ERRFILE" ]]; then
-  if cp "$ERRFILE" "$WORKDIR/processed_pdfs/"; then
-    rm -f "$ERRFILE" 
-    echo "Moved error file to $WORKDIR/processed_pdfs/$ERRFILE"
+  if cp "$ERRFILE" "$WORKDIR/$TMPPDFDIR/"; then
+    rm -f "$ERRFILE"
+    echo "Moved error file to $WORKDIR/$TMPPDFDIR/"
   else
-    echo "ERROR: Failed to move error file to processed_pdfs directory"
+    echo "WARNING: Failed to move error file to $TMPPDFDIR directory"
   fi
 fi
 
-# Cleanup lock directory
-rm -rf "$LOCKDIR"
-
-# Release main lock
+# Release lock
 flock -u 200
 
-echo 
-echo "Done. Check log and error files in $WORKDIR/processed_pdfs/ for details."
+echo "Done. Check log files in $WORKDIR/$TMPPDFDIR/ for details."
