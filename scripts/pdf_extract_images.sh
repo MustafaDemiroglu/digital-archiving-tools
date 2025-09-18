@@ -70,25 +70,42 @@ echo "Running in sequential mode (one PDF at a time). It can take a while to pro
 
 # --- Process PDF ---
 process_pdf() {
-  local pdf="$1"
+
+local pdf="$1"
+  echo "DEBUG: Entering process_pdf with: $pdf"  # BU SATIRI EKLE
+  
   local base=$(basename "$pdf" .pdf)
   local dir=$(dirname "$pdf")
   
-  echo "Processing: $pdf" | tee -a "$LOGFILE"
+  echo "DEBUG: base=$base, dir=$dir"  # BU SATIRI EKLE
+  echo "Processing: $pdf" >> "$LOGFILE"
 
   # Count pages
+  echo "DEBUG: Running pdfinfo..."  # BU SATIRI EKLE
   local pages
   if ! pages=$(pdfinfo "$pdf" 2>/dev/null | awk '/Pages:/ {print $2}'); then
-    echo "ERROR: pdfinfo failed for $pdf" | tee -a "$ERRFILE"
+    echo "ERROR: pdfinfo failed for $pdf" >> "$ERRFILE"
     return 1
   fi
+  echo "DEBUG: Found $pages pages"  # BU SATIRI EKLE
+  
   if [[ -z "$pages" ]]; then
-    echo "ERROR: cannot read page count for $pdf" | tee -a "$ERRFILE"
+    echo "ERROR: cannot read page count for $pdf" >> "$ERRFILE"
     return 1
   fi
   
+  echo "DEBUG: Starting prefix calculation..."  # BU SATIRI EKLE
   # Build prefix from directory structure
   local pdf_count
+  pdf_count=$(find "$dir" -maxdepth 1 -type f -iname "*.pdf" | wc -l)
+  echo "DEBUG: pdf_count=$pdf_count"  # BU SATIRI EKLE
+  
+
+
+
+  
+  # Build prefix from directory structure
+  
   pdf_count=$(find "$dir" -maxdepth 1 -type f -iname "*.pdf" | wc -l)
   local prefix
   local curr_dirname=$(basename "$dir")
