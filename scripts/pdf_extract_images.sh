@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 4.5
+# Version 4.6
 # Author : Mustafa Demiroglu
 #
 # Description:
@@ -257,24 +257,33 @@ total_pdfs=0
 processed_pdfs=0
 failed_pdfs=0
 
+# Create temporary file for PDF list
+TEMP_PDF_LIST=$(mktemp)
+find "$WORKDIR" -type f -iname "*.pdf" -not -path "*/$TMPPDFDIR/*" > "$TEMP_PDF_LIST"
 
+# Check if any PDFs found
+if [[ ! -s "$TEMP_PDF_LIST" ]]; then
+  echo "No PDFs found in $WORKDIR" | tee -a "$ERRFILE"
+  rm -f "$TEMP_PDF_LIST"
+  exit 0
+fi
 
-echo "DEBUG: Starting find command..."
-find "$WORKDIR" -type f -iname "*.pdf" -not -path "*/$TMPPDFDIR/*" | head -5
-echo "DEBUG: Find command completed"
-
-while IFS= read -r -d '' pdf; do
-  echo "DEBUG: Found PDF: $pdf"  # BU SATIRI EKLE
+# Process each PDF
+while IFS= read -r pdf; do
+  [[ -z "$pdf" ]] && continue  # Skip empty lines
+  echo "DEBUG: Found PDF: $pdf"  | tee -a "$LOGFILE"
   ((total_pdfs++))
-  echo "Progress: Processing PDF $total_pdfs - $(basename "$pdf")"
+  echo "Progress: Processing PDF $total_pdfs - $(basename "$pdf")"  | tee -a "$LOGFILE"
   
   if process_pdf "$pdf"; then
     ((processed_pdfs++))
   else
     ((failed_pdfs++))
   fi
-done < <(find "$WORKDIR" -type f -iname "*.pdf" -not -path "*/$TMPPDFDIR/*" -print0)
+done < "$TEMP_PDF_LIST"
 
+# Cleanup
+rm -f "$TEMP_PDF_LIST"
 
 
 # --- Final summary ---
