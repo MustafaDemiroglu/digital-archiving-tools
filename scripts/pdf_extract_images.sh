@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 4.4
+# Version 4.5
 # Author : Mustafa Demiroglu
 #
 # Description:
@@ -74,16 +74,16 @@ process_pdf() {
   local base=$(basename "$pdf" .pdf)
   local dir=$(dirname "$pdf")
   
-  echo "Processing: $pdf" >> "$LOGFILE"
+  echo "Processing: $pdf" | tee -a "$LOGFILE"
 
   # Count pages
   local pages
   if ! pages=$(pdfinfo "$pdf" 2>/dev/null | awk '/Pages:/ {print $2}'); then
-    echo "ERROR: pdfinfo failed for $pdf" >> "$ERRFILE"
+    echo "ERROR: pdfinfo failed for $pdf" | tee -a "$ERRFILE"
     return 1
   fi
   if [[ -z "$pages" ]]; then
-    echo "ERROR: cannot read page count for $pdf" >> "$ERRFILE"
+    echo "ERROR: cannot read page count for $pdf" | tee -a "$ERRFILE"
     return 1
   fi
   
@@ -98,7 +98,7 @@ process_pdf() {
 
   if [[ "$pdf_count" -gt 1 ]]; then
     prefix="$base"
-    echo "WARNING: Multiple PDFs in folder, using PDF name as prefix: $prefix" >> "$ERRFILE"
+    echo "WARNING: Multiple PDFs in folder, using PDF name as prefix: $prefix" | tee -a "$ERRFILE"
     
     # Check for potential filename conflicts with existing files
     local conflict_found=false
@@ -117,9 +117,9 @@ process_pdf() {
     for ext in "${expected_extensions[@]}"; do
       if ls "${dir}/${prefix}_"[0-9][0-9][0-9][0-9]."${ext}" >/dev/null 2>&1; then
         conflict_found=true
-        echo "ERROR: Filename conflict detected in $pdf" >> "$ERRFILE"
-        echo "ERROR: Existing files found matching pattern ${prefix}_NNNN.${ext}" >> "$ERRFILE"
-        echo "ERROR: Manual intervention required - please rename or move existing files" >> "$ERRFILE"
+        echo "ERROR: Filename conflict detected in $pdf" | tee -a "$ERRFILE"
+        echo "ERROR: Existing files found matching pattern ${prefix}_NNNN.${ext}" | tee -a "$ERRFILE"
+        echo "ERROR: Manual intervention required - please rename or move existing files" | tee -a "$ERRFILE"
         break
       fi
     done
@@ -148,9 +148,9 @@ process_pdf() {
       for ext in "${expected_extensions[@]}"; do
         if ls "${dir}/${prefix}_"[0-9][0-9][0-9][0-9]."${ext}" >/dev/null 2>&1; then
           conflict_found=true
-          echo "WARNING: Potential filename conflict in $pdf" >> "$ERRFILE"
-          echo "WARNING: Existing files found matching pattern ${prefix}_NNNN.${ext}" >> "$ERRFILE"
-          echo "WARNING: Proceeding with extraction - manual verification recommended" >> "$ERRFILE"
+          echo "WARNING: Potential filename conflict in $pdf" | tee -a "$ERRFILE"
+          echo "WARNING: Existing files found matching pattern ${prefix}_NNNN.${ext}" | tee -a "$ERRFILE"
+          echo "WARNING: Proceeding with extraction - manual verification recommended" | tee -a "$ERRFILE"
           break
         fi
       done
@@ -167,16 +167,16 @@ process_pdf() {
   local temp_prefix="${prefix}_temp_$$"  # Use temporary prefix to avoid conflicts
   
   if [[ "$OUTFMT" == "tif" ]]; then
-    pdfimages -tiff "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
+    pdfimages -tiff "$pdf" "${dir}/${temp_prefix}" 2| tee -a"$ERRFILE"
   elif [[ "$OUTFMT" == "jpg" ]]; then
-    pdfimages -j "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
+    pdfimages -j "$pdf" "${dir}/${temp_prefix}" 2| tee -a"$ERRFILE"
   else
-    pdfimages -all "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
+    pdfimages -all "$pdf" "${dir}/${temp_prefix}" 2| tee -a"$ERRFILE"
   fi
   local status=$?
 
   if [[ $status -ne 0 ]]; then
-    echo "ERROR: pdfimages failed for $pdf" >> "$ERRFILE"
+    echo "ERROR: pdfimages failed for $pdf" | tee -a "$ERRFILE"
     # Cleanup temporary files
     find "$dir" -name "${temp_prefix}-*" -type f -delete 2>/dev/null || true
     return 1
@@ -189,14 +189,14 @@ process_pdf() {
   imgcount=$(echo "$extracted" | grep -c . || echo 0)
 
   if [[ "$imgcount" -eq 0 ]]; then
-    echo "ERROR: no images extracted from $pdf" >> "$ERRFILE"
+    echo "ERROR: no images extracted from $pdf" | tee -a "$ERRFILE"
     return 1
   fi
 
   # Compare page count and image count and if not cleanup wrong images
   if [[ "$imgcount" -ne "$pages" ]]; then
     find "$dir" -name "${temp_prefix}-*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
-    echo "ERROR: mismatch in $pdf (expected $pages, got $imgcount)" >> "$ERRFILE"
+    echo "ERROR: mismatch in $pdf (expected $pages, got $imgcount)" | tee -a "$ERRFILE"
     return 1
   fi
 
@@ -206,7 +206,7 @@ process_pdf() {
     local ext="${file##*.}"
     local newname=$(printf "%s_%04d.%s" "${prefix}" "$counter" "$ext")
     if ! mv "$file" "${dir}/${newname}"; then
-      echo "ERROR: failed to rename $file to $newname" >> "$ERRFILE"
+      echo "ERROR: failed to rename $file to $newname" | tee -a "$ERRFILE"
       find "$dir" -name "${temp_prefix}-*" -type f -delete 2>/dev/null || true
       find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
       return 1
@@ -214,7 +214,7 @@ process_pdf() {
     counter=$((counter+1))
   done
 
-  echo "SUCCESS: $pdf extracted correctly ($imgcount pages)" >> "$LOGFILE"
+  echo "SUCCESS: $pdf extracted correctly ($imgcount pages)" | tee -a "$LOGFILE"
   
   # Move processed PDF, preserving folder structure
   local processed_dir="$WORKDIR/$TMPPDFDIR"
@@ -226,26 +226,27 @@ process_pdf() {
 
   # Create directory structure if needed
   if [[ ! -d "$processed_dir" ]]; then
-    if ! mkdir -p "$processed_dir" 2>>"$ERRFILE"; then
-      echo "ERROR: cannot create directory $processed_dir" >> "$ERRFILE"
+    if ! mkdir -p "$processed_dir" 2 | tee -a"$ERRFILE"; then
+      echo "ERROR: cannot create directory $processed_dir" | tee -a "$ERRFILE"
       find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
       return 1
     fi
   fi
   
+  local target="$processed_dir/$(basename "$pdf")"
   if [[ -f "$target" ]]; then
   local counter=1
   while [[ -f "${target%.pdf}_duplicate_${counter}.pdf" ]]; do
     ((counter++))
   done
   target="${target%.pdf}_duplicate_${counter}.pdf"
-  echo "WARNING: Renamed duplicate to $(basename "$target")" >> "$ERRFILE"
+  echo "WARNING: Renamed duplicate to $(basename "$target")" | tee -a "$ERRFILE"
   fi
   
   if mv "$pdf" "$target"; then
-    echo "Moved $pdf -> $target" >> "$LOGFILE"
+    echo "Moved $pdf -> $target" | tee -a "$LOGFILE"
   else
-    echo "ERROR: failed to move $pdf to $target" >> "$ERRFILE"
+    echo "ERROR: failed to move $pdf to $target" | tee -a "$ERRFILE"
     find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
     return 1
   fi
