@@ -257,7 +257,14 @@ total_pdfs=0
 processed_pdfs=0
 failed_pdfs=0
 
+
+
+echo "DEBUG: Starting find command..."
+find "$WORKDIR" -type f -iname "*.pdf" -not -path "*/$TMPPDFDIR/*" | head -5
+echo "DEBUG: Find command completed"
+
 while IFS= read -r -d '' pdf; do
+  echo "DEBUG: Found PDF: $pdf"  # BU SATIRI EKLE
   ((total_pdfs++))
   echo "Progress: Processing PDF $total_pdfs - $(basename "$pdf")"
   
@@ -267,6 +274,8 @@ while IFS= read -r -d '' pdf; do
     ((failed_pdfs++))
   fi
 done < <(find "$WORKDIR" -type f -iname "*.pdf" -not -path "*/$TMPPDFDIR/*" -print0)
+
+
 
 # --- Final summary ---
 echo | tee -a "$LOGFILE"
