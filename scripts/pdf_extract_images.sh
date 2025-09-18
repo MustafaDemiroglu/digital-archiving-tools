@@ -1,14 +1,14 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 3.3
-# Author : Mustafa Demiropglu
+# Version 4.1
+# Author : Mustafa Demiroglu
 #
 # Description:
 #   This script extracts each page from PDF files into separate images using 'pdfimages'.
 #   It supports both TIFF (.tif) and JPEG (.jpg).
 #   The script is designed to run on Linux, macOS, or WSL (Windows Subsystem).
-#   Parallelized based on CPU count.
+#   Parallelized based on CPU count with per-file locking to prevent race conditions.
 #   Concurrency lock prevents multiple instances.
 #
 # How it works:
@@ -38,14 +38,19 @@ set -euo pipefail
 # --- Setup ---
 WORKDIR="${1:-$(pwd)}"    # Path to work on, default = current dir
 OUTFMT="${2:-}"               # Desired image format (tif or jpg)
-LOGFILE="pdf_extract_log.txt"
-ERRFILE="pdf_extract_error.txt"
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+LOGFILE="log_pdf_extract_${TIMESTAMP}.txt"
+ERRFILE="error_pdf_extract_${TIMESTAMP}.txt"
 TMPPDFDIR="./processed_pdfs"
 LOCKFILE="/tmp/pdf_extract.lock"
+LOCKDIR="/tmp/pdf_extract_locks"
+
+# Create lock directory for individual file locks
+mkdir -p "$LOCKDIR"
 
 # --- Acquire lock ---
 exec 200>"$LOCKFILE"
-flock -n 200 || { echo "Another instance is running. Exiting."; exit 1; }
+flock -n 200 || { echo "Another instance is running. Exiting." | tee -a "$ERRFILE"; exit 1; }
 
 # --- Ask for format if not provided ---
 if [[ -z "$OUTFMT" ]]; then
@@ -62,14 +67,14 @@ fi
 : > "$LOGFILE"
 : > "$ERRFILE"
 
-echo "Starting PDF extraction in: $WORKDIR"
-echo "Output format: $OUTFMT"
-echo "Log file: $LOGFILE"
-echo "Error file: $ERRFILE"
-echo
+echo "Starting PDF extraction in: $WORKDIR" | tee -a "$LOGFILE"
+echo "Output format: $OUTFMT" | tee -a "$LOGFILE"
+echo "Log file: $LOGFILE" | tee -a "$LOGFILE"
+echo "Error file: $ERRFILE" | tee -a "$LOGFILE"
+echo "It can take a while to process all PDFs" | tee -a "$LOGFILE"
 
 CPUCOUNT=$(nproc)
-echo "Using up to $CPUCOUNT parallel jobs."
+echo "Using up to $CPUCOUNT parallel jobs." | tee -a "$LOGFILE"
 
 # --- Process PDF ---
 process_pdf() {
@@ -77,17 +82,28 @@ process_pdf() {
   local base=$(basename "$pdf" .pdf)
   local dir=$(dirname "$pdf")
 
+  # Create a unique lock file for this PDF to prevent multiple processes working on same file
+  local pdf_lock_file="$LOCKDIR/$(echo "$pdf" | sed 's|/|_|g').lock"
+  
+  # Try to acquire lock for this specific PDF file
+  exec 201>"$pdf_lock_file"
+  if ! flock -n 201; then
+    echo "SKIPPED: $pdf (already being processed by another worker)" | tee -a "$LOGFILE"
+    return 0
+  fi
+  
   echo "Processing: $pdf" | tee -a "$LOGFILE"
 
   # Count pages
   local pages
-  pages=$(pdfinfo "$pdf" 2>/dev/null | awk '/Pages:/ {print $2}')
   if ! pages=$(pdfinfo "$pdf" 2>/dev/null | awk '/Pages:/ {print $2}'); then
-  echo "ERROR: pdfinfo failed for $pdf" | tee -a "$ERRFILE"
-  return 1
+    echo "ERROR: pdfinfo failed for $pdf" | tee -a "$ERRFILE"
+    flock -u 201
+    return 1
   fi
   if [[ -z "$pages" ]]; then
     echo "ERROR: cannot read page count for $pdf" | tee -a "$ERRFILE"
+    flock -u 201
     return 1
   fi
   
@@ -106,9 +122,68 @@ process_pdf() {
 
   if [[ "$pdf_count" -gt 1 ]]; then
     prefix="$base"
+    # Multiple PDFs in folder - check for filename conflicts
+    echo "WARNING: Multiple PDFs in folder, using PDF name as prefix: $prefix" | tee -a "$ERRFILE"
+    
+    # Check for potential filename conflicts with existing files
+    local conflict_found=false
+    local expected_extensions=()
+    
+    # Determine expected file extensions based on output format
+    if [[ "$OUTFMT" == "tif" ]]; then
+      expected_extensions=("tif")
+    elif [[ "$OUTFMT" == "jpg" ]]; then
+      expected_extensions=("jpg")
+    else
+      expected_extensions=("tif" "jpg" "pbm" "pgm" "ppm")
+    fi
+    
+    # Check for conflicts with existing files
+    for ext in "${expected_extensions[@]}"; do
+      # Check if any files exist that match our future naming pattern
+      if ls "${dir}/${prefix}_"[0-9][0-9][0-9][0-9]."${ext}" >/dev/null 2>&1; then
+        conflict_found=true
+        echo "ERROR: Filename conflict detected in $pdf" | tee -a "$ERRFILE"
+        echo "ERROR: Existing files found matching pattern ${prefix}_NNNN.${ext}" | tee -a "$ERRFILE"
+        echo "ERROR: Manual intervention required - please rename or move existing files" | tee -a "$ERRFILE"
+        break
+      fi
+    done
+    
+    if [[ "$conflict_found" == true ]]; then
+      flock -u 201
+      return 1
+    fi
+    
   else
+    # Single PDF in folder - use directory structure naming
     if [[ -n "$grandparent" && "$grandparent" != "/" && "$grandparent" != "." ]]; then
       prefix="${grandparent}_${parent}_nr_${curr_dirname}"
+      
+      # Check for filename conflicts in single PDF scenario
+      local conflict_found=false
+      local expected_extensions=()
+      
+      # Determine expected file extensions based on output format  
+      if [[ "$OUTFMT" == "tif" ]]; then
+        expected_extensions=("tif")
+      elif [[ "$OUTFMT" == "jpg" ]]; then
+        expected_extensions=("jpg")
+      else
+        expected_extensions=("tif" "jpg" "pbm" "pgm" "ppm")
+      fi
+      
+      # Check for conflicts with existing files (excluding numbered sequences from PDFs)
+      for ext in "${expected_extensions[@]}"; do
+        if ls "${dir}/${prefix}_"[0-9][0-9][0-9][0-9]."${ext}" >/dev/null 2>&1; then
+          conflict_found=true
+          echo "WARNING: Potential filename conflict in $pdf" | tee -a "$ERRFILE"
+          echo "WARNING: Existing files found matching pattern ${prefix}_NNNN.${ext}" | tee -a "$ERRFILE"
+          echo "WARNING: Proceeding with extraction - manual verification recommended" | tee -a "$ERRFILE"
+          break
+        fi
+      done
+      
     else
       prefix="${base}"
     fi
@@ -142,6 +217,7 @@ process_pdf() {
 
   if [[ "$imgcount" -eq 0 ]]; then
     echo "ERROR: no images extracted from $pdf" | tee -a "$ERRFILE"
+    flock -u 201
     return 1
   fi
 
@@ -150,6 +226,7 @@ process_pdf() {
     # cleanup wrong images (exclude PDF files to prevent accidental deletion)
     find "$dir" -name "${prefix}-*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
     echo "ERROR: mismatch in $pdf (expected $pages, got $imgcount)" | tee -a "$ERRFILE"
+    flock -u 201
     return 1
   fi
 
@@ -175,6 +252,7 @@ process_pdf() {
       echo "ERROR: cannot create directory $processed_dir" | tee -a "$ERRFILE"
       # cleanup images if PDF move fails
       find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
+      flock -u 201
       return 1
     }
     if mv "$pdf" "$processed_dir/"; then
@@ -183,16 +261,37 @@ process_pdf() {
       echo "ERROR: failed to move $pdf to $processed_dir/" | tee -a "$ERRFILE"
       # cleanup images if PDF move fails
       find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
+      flock -u 201
       return 1
     fi
   fi
+  
+  # Release the lock for this PDF
+  flock -u 201
+  
+  # Remove the lock file
+  rm -f "$pdf_lock_file"
 }
 
 export -f process_pdf
-export LOGFILE ERRFILE OUTFMT WORKDIR
+export LOGFILE ERRFILE OUTFMT WORKDIR LOCKDIR
 
 # Find all PDFs and process in parallel with xargs -P , exception:processed_pdfs
 find "$WORKDIR" -type f -iname "*.pdf" -not -path "*/processed_pdfs/*" | xargs -I{} -P "$CPUCOUNT" bash -c 'process_pdf "$@"' _ {}
 
-echo
-echo "Done. Check $LOGFILE and $ERRFILE for details."
+# Move log and error files to processed_pdfs directory
+mkdir -p "$WORKDIR/processed_pdfs"
+if [[ -f "$LOGFILE" ]]; then
+  mv "$LOGFILE" "$WORKDIR/processed_pdfs/"
+  echo "Moved log file to $WORKDIR/processed_pdfs/$LOGFILE" | tee -a "$LOGFILE"
+fi
+if [[ -f "$ERRFILE" ]]; then
+  mv "$ERRFILE" "$WORKDIR/processed_pdfs/"
+  echo "Moved error file to $WORKDIR/processed_pdfs/$ERRFILE" | tee -a "$LOGFILE"
+fi
+
+# Cleanup lock directory
+rm -rf "$LOCKDIR"
+
+echo 
+echo "Done. Check $LOGFILE and $ERRFILE for details." | tee -a "$LOGFILE"
