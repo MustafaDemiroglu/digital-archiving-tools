@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 5.7
+# Version 5.8
 # Author : Mustafa Demiroglu
 #
 # Description:
@@ -182,24 +182,38 @@ process_pdf() {
 
   # Compare page count and image count and if not cleanup wrong images
   if [[ "$imgcount" -ne "$pages" ]]; then
+    # Check if image count is 2x, 3x, 4x pages → likely duplicates
     if (( imgcount == pages*2 || imgcount == pages*3 || imgcount == pages*4 )); then
-      warn "duplicate images detected in $pdf (expected $pages, got $imgcount). Falling back to pdftoppm..."
-      # remove old images
-      find "$dir" -name "${temp_prefix}-*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
+      warn "Duplicate images detected in $pdf (expected $pages, got $imgcount). Falling back to pdftoppm..."
+        
+      # Remove previous extracted images
+      find "$dir" -maxdepth 1 -type f -name "${temp_prefix}-*" ! -name "*.pdf" -delete 2>/dev/null || true
 
+      # Extract with pdftoppm
       if [[ "$OUTFMT" == "tif" ]]; then
         pdftoppm -r 300 -tiff "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
       else
         pdftoppm -r 300 -jpeg "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
       fi
-      status=$?
+
+      # Reload extracted files into array
+      mapfile -t extracted_arr < <(find "$dir" -maxdepth 1 -type f -name "${temp_prefix}-*" -print0 | xargs -0 -r -n1 echo)
+      imgcount=${#extracted_arr[@]}
+
+      # Still mismatch? → fail
+      if [[ "$imgcount" -ne "$pages" ]]; then
+        err "Fallback with pdftoppm also failed for $pdf (expected $pages, got $imgcount)"
+        find "$dir" -maxdepth 1 -type f -name "${temp_prefix}-*" -delete 2>/dev/null || true
+        return 1
+      fi
     else
-      find "$dir" -name "${temp_prefix}-*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
-      err "mismatch in $pdf (expected $pages, got $imgcount)"
+      # Normal mismatch, not a duplicate scenario
+      find "$dir" -maxdepth 1 -type f -name "${temp_prefix}-*" -delete 2>/dev/null || true
+      err "Mismatch in $pdf (expected $pages, got $imgcount)"
       return 1
     fi
   fi
-
+ 
   # Rename extracted files with final names (0001, 0002...) and Cleanup on failure
   local counter=1
   # sort files to ensure order
@@ -265,7 +279,7 @@ total_pdfs=${#pdf_array[@]}
 for pdf in "${pdf_array[@]}"; do
     process_pdf "$pdf" || failed_pdfs=$((failed_pdfs+1))
 done
-processed_pdfs=$(($total_pdfs-$failed_pdfs))
+processed_pdfs=$((total_pdfs - failed_pdfs))
 
 # --- Final summary ---
 echo | tee -a "$LOGFILE"
