@@ -256,6 +256,12 @@ total_pdfs=0
 processed_pdfs=0
 failed_pdfs=0
 
+# Safety check
+if [[ -z "$WORKDIR" || -z "$TMPPDFDIR" ]]; then
+  echo "ERROR: WORKDIR or TMPPDFDIR is not set!" >&2
+  exit 1
+fi
+
 while IFS= read -r -d '' pdf; do
   ((total_pdfs++))
   echo "DEBUG: Found PDF: $pdf"
@@ -265,7 +271,7 @@ while IFS= read -r -d '' pdf; do
   else
     ((failed_pdfs++))
   fi
-done < <(find "$WORKDIR" -type f -iname "*.pdf" -not -path "*/$TMPPDFDIR/*" -print0)
+done < <(find "$WORKDIR" -type f -iname "*.pdf" ! -path "*/$TMPPDFDIR/*" -print0)
 
 # --- Final summary ---
 echo | tee -a "$LOGFILE"
