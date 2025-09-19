@@ -89,8 +89,13 @@ log "Running in sequential mode (one PDF at a time). It can take a while."
 
 # Optional verbose shell debug
 if [[ "$VERBOSE" -eq 1 ]]; then
-  set -x
+  echo "DEBUG: running find on $WORKDIR" | tee -a "$LOGFILE"
+  find "$WORKDIR" -type f -iname '*.pdf' -not -path '*/processed_pdfs/*' | tee -a "$LOGFILE"
 fi
+
+mapfile -t -d '' pdf_array < <(
+  find "$WORKDIR" -type f -iname '*.pdf' -not -path '*/processed_pdfs/*' -print0
+)
 
 # --- Process PDF ---
 process_pdf() {
