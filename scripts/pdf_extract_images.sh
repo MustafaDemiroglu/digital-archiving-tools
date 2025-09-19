@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 5.6
+# Version 5.7
 # Author : Mustafa Demiroglu
 #
 # Description:
@@ -181,12 +181,6 @@ process_pdf() {
   fi
 
   # Compare page count and image count and if not cleanup wrong images
-  if [[ "$imgcount" -ne "$pages" ]]; then
-    find "$dir" -name "${temp_prefix}-*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
-    err "mismatch in $pdf (expected $pages, got $imgcount)"
-    return 1
-  fi
-  
   if [[ "$imgcount" -ne "$pages" ]]; then
     if (( imgcount == pages*2 || imgcount == pages*3 || imgcount == pages*4 )); then
       warn "duplicate images detected in $pdf (expected $pages, got $imgcount). Falling back to pdftoppm..."
