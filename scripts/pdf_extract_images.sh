@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 5.2
+# Version 5.3
 # Author : Mustafa Demiroglu
 #
 # Description:
@@ -41,7 +41,6 @@ LOGFILE="$WORKDIR/log_pdf_extract_${TIMESTAMP}.txt"
 ERRFILE="$WORKDIR/error_pdf_extract_${TIMESTAMP}.txt"
 TMPPDFDIR="processed_pdfs"
 LOCKFILE="/tmp/pdf_extract.lock"
-VERBOSE="${VERBOSE:-0}"   # set VERBOSE=1 in env to enable shell debug prints
 
 # --- Helper for logging ---
 log() { echo "$(date +"%F %T") [INFO] $*" | tee -a "$LOGFILE"; }
@@ -86,16 +85,6 @@ log "Output format: $OUTFMT"
 log "Log file: $LOGFILE"
 log "Error file: $ERRFILE"
 log "Running in sequential mode (one PDF at a time). It can take a while."
-
-# Optional verbose shell debug
-if [[ "$VERBOSE" -eq 1 ]]; then
-  echo "DEBUG: running find on $WORKDIR" | tee -a "$LOGFILE"
-  find "$WORKDIR" -type f -iname '*.pdf' -not -path '*/processed_pdfs/*' | tee -a "$LOGFILE"
-fi
-
-mapfile -t -d '' pdf_array < <(
-  find "$WORKDIR" -type f -iname '*.pdf' -not -path '*/processed_pdfs/*' -print0
-)
 
 # --- Process PDF ---
 process_pdf() {
@@ -256,22 +245,16 @@ total_pdfs=0
 processed_pdfs=0
 failed_pdfs=0
 
-# Safety check
-if [[ -z "$WORKDIR" || -z "$TMPPDFDIR" ]]; then
-  echo "ERROR: WORKDIR or TMPPDFDIR is not set!" >&2
-  exit 1
-fi
+mapfile -t -d '' pdf_array < <(
+  find "$WORKDIR" -type f -iname '*.pdf' ! -path '*/processed_pdfs/*' -print0
+)
 
-while IFS= read -r -d '' pdf; do
-  ((total_pdfs++))
-  echo "DEBUG: Found PDF: $pdf"
-  echo "Progress: Processing PDF $total_pdfs - $(basename "$pdf")"
-  if process_pdf "$pdf"; then
-    ((processed_pdfs++))
-  else
-    ((failed_pdfs++))
-  fi
-done < <(find "$WORKDIR" -type f -iname "*.pdf" ! -path "*/$TMPPDFDIR/*" -print0)
+echo "DEBUG: pdf_array length = ${#pdf_array[@]}"
+printf 'DEBUG: first file = %s\n' "${pdf_array[0]}"
+
+for pdf in "${pdf_array[@]}"; do
+    process_pdf "$pdf" || failed_pdfs=$((failed_pdfs+1))
+done
 
 # --- Final summary ---
 echo | tee -a "$LOGFILE"
