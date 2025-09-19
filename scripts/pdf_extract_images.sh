@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 5.3
+# Version 5.4
 # Author : Mustafa Demiroglu
 #
 # Description:
@@ -159,9 +159,10 @@ process_pdf() {
   if [[ "$OUTFMT" == "tif" ]]; then
     pdfimages -tiff "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
   elif [[ "$OUTFMT" == "jpg" ]]; then
-    pdfimages -j "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
+    pdfimages -jpeg "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
   else
-    pdfimages -all "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
+    pdfimages -tiff "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
+    pdfimages -jpeg "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
   fi
   local status=$?
 
@@ -249,11 +250,13 @@ mapfile -t -d '' pdf_array < <(
   find "$WORKDIR" -type f -iname '*.pdf' ! -path '*/processed_pdfs/*' -print0
 )
 
-echo "DEBUG: pdf_array length = ${#pdf_array[@]}"
-printf 'DEBUG: first file = %s\n' "${pdf_array[0]}"
-
 for pdf in "${pdf_array[@]}"; do
-    process_pdf "$pdf" || failed_pdfs=$((failed_pdfs+1))
+  ((total_pdfs++))
+  if process_pdf "$pdf"; then 
+    ((processed_pdfs++)) 
+  else 
+    ((failed_pdfs++)) 
+  fi
 done
 
 # --- Final summary ---
