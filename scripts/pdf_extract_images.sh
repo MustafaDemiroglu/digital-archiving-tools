@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 4.7
+# Version 5.1
 # Author : Mustafa Demiroglu
 #
 # Description:
@@ -37,8 +37,8 @@ set -euo pipefail
 WORKDIR="${1:-$(pwd)}"    # Path to work on, default = current dir
 OUTFMT="${2:-}"               # Desired image format (tif or jpg)
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-LOGFILE="log_pdf_extract_${TIMESTAMP}.txt"
-ERRFILE="error_pdf_extract_${TIMESTAMP}.txt"
+LOGFILE="$WORKDIR/log_pdf_extract_${TIMESTAMP}.txt"
+ERRFILE="$WORKDIR/error_pdf_extract_${TIMESTAMP}.txt"
 TMPPDFDIR="processed_pdfs"
 LOCKFILE="/tmp/pdf_extract.lock"
 
@@ -70,14 +70,6 @@ echo "Running in sequential mode (one PDF at a time). It can take a while to pro
 
 # --- Process PDF ---
 process_pdf() {
-
-
-echo "INSIDE FUNCTION - START"  # BU SATIRI EKLE
-  local pdf="$1"
-  echo "INSIDE FUNCTION - pdf=$pdf"  # BU SATIRI EKLE
-
-
-
   local pdf="$1"
   local base=$(basename "$pdf" .pdf)
   local dir=$(dirname "$pdf")
@@ -175,11 +167,11 @@ echo "INSIDE FUNCTION - START"  # BU SATIRI EKLE
   local temp_prefix="${prefix}_temp_$$"  # Use temporary prefix to avoid conflicts
   
   if [[ "$OUTFMT" == "tif" ]]; then
-    pdfimages -tiff "$pdf" "${dir}/${temp_prefix}" 2| tee -a"$ERRFILE"
+    pdfimages -tiff "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
   elif [[ "$OUTFMT" == "jpg" ]]; then
-    pdfimages -j "$pdf" "${dir}/${temp_prefix}" 2| tee -a"$ERRFILE"
+    pdfimages -j "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
   else
-    pdfimages -all "$pdf" "${dir}/${temp_prefix}" 2| tee -a"$ERRFILE"
+    pdfimages -all "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
   fi
   local status=$?
 
@@ -234,7 +226,7 @@ echo "INSIDE FUNCTION - START"  # BU SATIRI EKLE
 
   # Create directory structure if needed
   if [[ ! -d "$processed_dir" ]]; then
-    if ! mkdir -p "$processed_dir" 2 | tee -a"$ERRFILE"; then
+    if ! mkdir -p "$processed_dir" 2>>"$ERRFILE"; then
       echo "ERROR: cannot create directory $processed_dir" | tee -a "$ERRFILE"
       find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
       return 1
@@ -267,27 +259,17 @@ failed_pdfs=0
 
 mapfile -t pdf_array < <(find "$WORKDIR" -type f -iname "*.pdf" -not -path "*/$TMPPDFDIR/*")
 
-
 for pdf in "${pdf_array[@]}"; do
   echo "DEBUG: Found PDF: $pdf"
   ((total_pdfs++))
   echo "Progress: Processing PDF $total_pdfs - $(basename "$pdf")"
   
-  echo "DEBUG: About to call process_pdf..."
-  set +e  # Error handling'i kapat
-  process_pdf "$pdf"
-  local exit_code=$?
-  set -e  # Error handling'i aç
-  
-  echo "DEBUG: process_pdf exit code: $exit_code"
-  
-  if [[ $exit_code -eq 0 ]]; then
+  if process_pdf "$pdf"; then
     ((processed_pdfs++))
   else
     ((failed_pdfs++))
   fi
 done
-
 
 # --- Final summary ---
 echo | tee -a "$LOGFILE"
@@ -319,15 +301,3 @@ fi
 flock -u 200
 
 echo "Done. Check log files in $WORKDIR/$TMPPDFDIR/ for details."
-
-
-
-
-
-
-# Script'in sonuna ekle:
-echo "MANUAL TEST:"
-set +e
-process_pdf "/media/cepheus/ingest/hdd_upload/2025-08-20_Elements_hstam_Mustafas_Bearbeitung/hstam/kat._ii/weyhers_4/hstam_kat._ii_nr_weyhers_4.pdf"
-echo "Manual test exit code: $?"
-set -e
