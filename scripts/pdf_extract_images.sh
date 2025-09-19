@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 5.4
+# Version 5.5
 # Author : Mustafa Demiroglu
 #
 # Description:
@@ -249,15 +249,11 @@ failed_pdfs=0
 mapfile -t -d '' pdf_array < <(
   find "$WORKDIR" -type f -iname '*.pdf' ! -path '*/processed_pdfs/*' -print0
 )
-
+total_pdfs=${#pdf_array[@]}
 for pdf in "${pdf_array[@]}"; do
-  ((total_pdfs++))
-  if process_pdf "$pdf"; then 
-    ((processed_pdfs++)) 
-  else 
-    ((failed_pdfs++)) 
-  fi
+    process_pdf "$pdf" || failed_pdfs=$((failed_pdfs+1))
 done
+processed_pdfs=$(($total_pdfs-$failed_pdfs))
 
 # --- Final summary ---
 echo | tee -a "$LOGFILE"
