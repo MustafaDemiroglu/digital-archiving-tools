@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 5.5
+# Version 5.6
 # Author : Mustafa Demiroglu
 #
 # Description:
@@ -159,10 +159,9 @@ process_pdf() {
   if [[ "$OUTFMT" == "tif" ]]; then
     pdfimages -tiff "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
   elif [[ "$OUTFMT" == "jpg" ]]; then
-    pdfimages -jpeg "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
+    pdfimages -j "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
   else
-    pdfimages -tiff "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
-    pdfimages -jpeg "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
+    pdfimages -all "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
   fi
   local status=$?
 
@@ -186,6 +185,25 @@ process_pdf() {
     find "$dir" -name "${temp_prefix}-*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
     err "mismatch in $pdf (expected $pages, got $imgcount)"
     return 1
+  fi
+  
+  if [[ "$imgcount" -ne "$pages" ]]; then
+    if (( imgcount == pages*2 || imgcount == pages*3 || imgcount == pages*4 )); then
+      warn "duplicate images detected in $pdf (expected $pages, got $imgcount). Falling back to pdftoppm..."
+      # remove old images
+      find "$dir" -name "${temp_prefix}-*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
+
+      if [[ "$OUTFMT" == "tif" ]]; then
+        pdftoppm -r 300 -tiff "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
+      else
+        pdftoppm -r 300 -jpeg "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
+      fi
+      status=$?
+    else
+      find "$dir" -name "${temp_prefix}-*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
+      err "mismatch in $pdf (expected $pages, got $imgcount)"
+      return 1
+    fi
   fi
 
   # Rename extracted files with final names (0001, 0002...) and Cleanup on failure
