@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images_parallel.sh (based on pdf_extract_images_parallel.sh v:5.8)
-# Version 1.1 
+# Version 1.2 
 # Author : Mustafa Demiroglu
 #
 # Description:
@@ -10,7 +10,7 @@
 #   The script is designed to run on Linux, macOS, or WSL (Windows Subsystem).
 #   Concurrency lock prevents multiple instances.
 #
-# NEW FEATURES:
+# FEATURES:
 #   - Parallel processing support (-p/--parallel)
 #   - Help menu (-h/--help)
 #   - Dry-run mode (-n/--dry-run) to preview what will be processed
@@ -46,14 +46,23 @@ set -euo pipefail
 
 # --- Default values and global variables ---
 PARALLEL_MODE=false      # Enable parallel processing
-DRY_RUN=false           # Preview mode - don't actually process
-VERBOSE=false           # Detailed output mode
-MAX_JOBS=4              # Default number of parallel jobs
+DRY_RUN=false            # Preview mode - don't actually process
+VERBOSE=false            # Detailed output mode
+MAX_JOBS=0               # Default number of parallel jobs
+
+# Initialize basic variables early
+WORKDIR=""
+OUTFMT=""
+LOGFILE=""
+ERRFILE=""
+TMPPDFDIR="processed_pdfs"
+LOCKFILE="/tmp/pdf_extract_$$.lock"
+LOCK_FD=""
 
 # --- Function to show help ---
 show_help() {
     cat << EOF
-PDF Image Extraction Script v6.0
+PDF Image Extraction Script
 
 USAGE:
     $0 [OPTIONS] [PATH] [FORMAT]
@@ -75,10 +84,10 @@ OPTIONS:
 
 EXAMPLES:
     $0                                    # Interactive mode in current directory
-    $0 /home/user/pdfs tif               # Extract as TIFF from specific path
-    $0 -p -j 8 /data jpg                 # Parallel processing with 8 jobs, JPEG output
-    $0 --dry-run --verbose /docs         # Preview processing with detailed output
-    $0 -v -p /archive all                # Verbose parallel processing, all formats
+    $0 /home/user/pdfs tif                # Extract as TIFF from specific path
+    $0 -p -j 8 /data jpg                  # Parallel processing with 8 jobs, JPEG output
+    $0 --dry-run --verbose /docs          # Preview processing with detailed output
+    $0 -v -p /archive all                 # Verbose parallel processing, all formats
 
 REQUIREMENTS:
     - pdfimages (ImageMagick or poppler-utils)
@@ -92,7 +101,11 @@ EOF
 # --- Function for verbose logging ---
 verbose() {
     if [[ "$VERBOSE" == true ]]; then
-        echo "$(date +"%F %T") [VERBOSE] $*" | tee -a "$LOGFILE"
+        if [[ -n "$LOGFILE" && -f "$LOGFILE" ]]; then
+            echo "$(date +"%F %T") [VERBOSE] $*" | tee -a "$LOGFILE"
+        else
+            echo "$(date +"%F %T") [VERBOSE] $*"
+        fi
     fi
 }
 
@@ -153,6 +166,21 @@ parse_arguments() {
     verbose "Output format: ${OUTFMT:-not specified}"
 }
 
+# --- Auto-detect CPU cores ---
+detect_cpu_cores() {
+    local cores
+    if command -v nproc >/dev/null 2>&1; then
+        cores=$(nproc)
+    elif [[ -r /proc/cpuinfo ]]; then
+        cores=$(grep -c '^processor' /proc/cpuinfo)
+    elif command -v sysctl >/dev/null 2>&1; then
+        cores=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
+    else
+        cores=4  # fallback
+    fi
+    echo "$cores"
+}
+
 # --- Check if parallel is available when needed ---
 check_parallel_availability() {
     if [[ "$PARALLEL_MODE" == true ]]; then
@@ -164,6 +192,12 @@ check_parallel_availability() {
             PARALLEL_MODE=false
         else
             verbose "GNU parallel found, parallel processing available"
+            
+            # Auto-detect CPU cores if MAX_JOBS is 0
+            if [[ "$MAX_JOBS" -eq 0 ]]; then
+                MAX_JOBS=$(detect_cpu_cores)
+                verbose "Auto-detected $MAX_JOBS CPU cores for parallel processing"
+            fi
         fi
     fi
 }
@@ -173,15 +207,16 @@ initialize_script() {
     TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
     LOGFILE="$WORKDIR/log_pdf_extract_${TIMESTAMP}.txt"
     ERRFILE="$WORKDIR/error_pdf_extract_${TIMESTAMP}.txt"
-    TMPPDFDIR="processed_pdfs"
-    LOCKFILE="/tmp/pdf_extract.lock"
 
     # Create lock file for dry-run too (to prevent multiple dry-runs)
-    exec 200>"$LOCKFILE"
-    flock -n 200 || { 
-        echo "Another instance is running. Exiting." | tee -a "$ERRFILE"
+    exec {LOCK_FD}>"$LOCKFILE"
+    if ! flock -n $LOCK_FD; then
+        echo "Another instance is running. Exiting." >&2
+        if [[ -n "$ERRFILE" ]]; then
+            echo "Another instance is running. Exiting." >> "$ERRFILE"
+        fi
         exit 1
-    }
+    fi
 
     # Ask for format if not provided (skip in dry-run if not specified)
     if [[ -z "$OUTFMT" && "$DRY_RUN" == false ]]; then
@@ -208,18 +243,44 @@ initialize_script() {
 }
 
 # --- Helper for logging ---
-log() { echo "$(date +"%F %T") [INFO] $*" | tee -a "$LOGFILE"; }
-warn() { echo "$(date +"%F %T") [WARN] $*" | tee -a "$ERRFILE" "$LOGFILE"; }
-err() { echo "$(date +"%F %T") [ERROR] $*" | tee -a "$ERRFILE" "$LOGFILE"; }
+log() { 
+    if [[ -n "$LOGFILE" ]]; then
+        echo "$(date +"%F %T") [INFO] $*" | tee -a "$LOGFILE"
+    else
+        echo "$(date +"%F %T") [INFO] $*"
+    fi
+}
+
+warn() { 
+    if [[ -n "$LOGFILE" && -n "$ERRFILE" ]]; then
+        echo "$(date +"%F %T") [WARN] $*" | tee -a "$ERRFILE" "$LOGFILE"
+    else
+        echo "$(date +"%F %T") [WARN] $*" >&2
+    fi
+}
+
+err() { 
+    if [[ -n "$LOGFILE" && -n "$ERRFILE" ]]; then
+        echo "$(date +"%F %T") [ERROR] $*" | tee -a "$ERRFILE" "$LOGFILE"
+    else
+        echo "$(date +"%F %T") [ERROR] $*" >&2
+    fi
+}
 
 cleanup_and_exit() {
     local rc=${1:-0}
     # Release lock
-    flock -u 200 || true
+    if [[ -n "$LOCK_FD" ]]; then
+        flock -u $LOCK_FD || true
+        exec {LOCK_FD}>&- || true
+    fi
+    # Remove lock file
+    [[ -f "$LOCKFILE" ]] && rm -f "$LOCKFILE" 2>/dev/null || true
+    
     # Move logs even on error if possible (skip in dry-run)
-    if [[ "$DRY_RUN" == false && -d "$WORKDIR/$TMPPDFDIR" ]]; then
-        mv -f "$LOGFILE" "$WORKDIR/$TMPPDFDIR/" 2>/dev/null || true
-        mv -f "$ERRFILE" "$WORKDIR/$TMPPDFDIR/" 2>/dev/null || true
+    if [[ "$DRY_RUN" == false && -n "$WORKDIR" && -d "$WORKDIR/$TMPPDFDIR" && -n "$LOGFILE" && -n "$ERRFILE" ]]; then
+        [[ -f "$LOGFILE" ]] && mv -f "$LOGFILE" "$WORKDIR/$TMPPDFDIR/" 2>/dev/null || true
+        [[ -f "$ERRFILE" ]] && mv -f "$ERRFILE" "$WORKDIR/$TMPPDFDIR/" 2>/dev/null || true
     fi
     exit "$rc"
 }
@@ -473,8 +534,8 @@ process_pdf() {
 
 # --- Main execution starts here ---
 parse_arguments "$@"
-check_parallel_availability
 initialize_script
+check_parallel_availability
 
 log "Starting PDF extraction in: $WORKDIR"
 log "Output format: $OUTFMT"
@@ -556,7 +617,4 @@ if [[ "$DRY_RUN" == false && -d "$WORKDIR/$TMPPDFDIR" ]]; then
     mv -f "$ERRFILE" "$WORKDIR/$TMPPDFDIR/" 2>/dev/null || warn "Failed to move error file to $WORKDIR/$TMPPDFDIR/"
 fi
 
-# Release lock and normal exit
-flock -u 200
-trap - EXIT
 exit 0
