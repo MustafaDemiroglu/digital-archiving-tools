@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################################
 # Script Name: pdf_extract_images.sh
-# Version 5.1
+# Version 5.2
 # Author : Mustafa Demiroglu
 #
 # Description:
@@ -41,10 +41,29 @@ LOGFILE="$WORKDIR/log_pdf_extract_${TIMESTAMP}.txt"
 ERRFILE="$WORKDIR/error_pdf_extract_${TIMESTAMP}.txt"
 TMPPDFDIR="processed_pdfs"
 LOCKFILE="/tmp/pdf_extract.lock"
+VERBOSE="${VERBOSE:-0}"   # set VERBOSE=1 in env to enable shell debug prints
+
+# --- Helper for logging ---
+log() { echo "$(date +"%F %T") [INFO] $*" | tee -a "$LOGFILE"; }
+warn() { echo "$(date +"%F %T") [WARN] $*" | tee -a "$ERRFILE" "$LOGFILE"; }
+err() { echo "$(date +"%F %T") [ERROR] $*" | tee -a "$ERRFILE" "$LOGFILE"; }
 
 # --- Acquire main lock ---
 exec 200>"$LOCKFILE"
 flock -n 200 || { echo "Another instance is running. Exiting." | tee -a "$ERRFILE"; exit 1; }
+
+cleanup_and_exit() {
+  local rc=${1:-0}
+  # Release lock
+  flock -u 200 || true
+  # Move logs even on error if possible
+  if [[ -d "$WORKDIR/$TMPPDFDIR" ]]; then
+    mv -f "$LOGFILE" "$WORKDIR/$TMPPDFDIR/" 2>/dev/null || true
+    mv -f "$ERRFILE" "$WORKDIR/$TMPPDFDIR/" 2>/dev/null || true
+  fi
+  exit "$rc"
+}
+trap 'cleanup_and_exit $?' EXIT INT TERM
 
 # --- Ask for format if not provided ---
 if [[ -z "$OUTFMT" ]]; then
@@ -53,108 +72,86 @@ fi
 OUTFMT=$(echo "$OUTFMT" | tr '[:upper:]' '[:lower:]')
 
 if [[ "$OUTFMT" != "tif" && "$OUTFMT" != "jpg" && "$OUTFMT" != "all" ]]; then
-  echo "Error: output format must be 'tif' or 'jpg' or 'all'" | tee -a "$ERRFILE"
+  err "Error: output format must be 'tif' or 'jpg' or 'all'"
   exit 1
 fi
 
-# --- Create processed_pdfs directory and Clear log files from previous runs ---
+# --- Prepare directories and logs ---
 mkdir -p "$WORKDIR/$TMPPDFDIR"
 : > "$LOGFILE"
 : > "$ERRFILE"
 
-echo "Starting PDF extraction in: $WORKDIR" | tee -a "$LOGFILE"
-echo "Output format: $OUTFMT" | tee -a "$LOGFILE"
-echo "Log file: $LOGFILE" | tee -a "$LOGFILE"
-echo "Error file: $ERRFILE" | tee -a "$LOGFILE"
-echo "Running in sequential mode (one PDF at a time). It can take a while to process all PDFs" | tee -a "$LOGFILE"
+log "Starting PDF extraction in: $WORKDIR"
+log "Output format: $OUTFMT"
+log "Log file: $LOGFILE"
+log "Error file: $ERRFILE"
+log "Running in sequential mode (one PDF at a time). It can take a while."
+
+# Optional verbose shell debug
+if [[ "$VERBOSE" -eq 1 ]]; then
+  set -x
+fi
 
 # --- Process PDF ---
 process_pdf() {
   local pdf="$1"
-  local base=$(basename "$pdf" .pdf)
-  local dir=$(dirname "$pdf")
-  
-  echo "Processing: $pdf" | tee -a "$LOGFILE"
+  local base dir pages prefix temp_prefix extracted imgcount status parent curr_dirname grandparent grandparent_dir pdf_count
 
+  base=$(basename "$pdf" .pdf)
+  dir=$(dirname "$pdf")
+  curr_dirname=$(basename "$dir")
+  parent=$(basename "$(dirname "$dir")")
+  grandparent_dir=$(dirname "$(dirname "$dir")")
+  grandparent=$(basename "$grandparent_dir")
+
+  log "Processing: $pdf"
+  
   # Count pages
-  local pages
   if ! pages=$(pdfinfo "$pdf" 2>/dev/null | awk '/Pages:/ {print $2}'); then
-    echo "ERROR: pdfinfo failed for $pdf" | tee -a "$ERRFILE"
+    err "pdfinfo failed for $pdf"
     return 1
   fi
   if [[ -z "$pages" ]]; then
-    echo "ERROR: cannot read page count for $pdf" | tee -a "$ERRFILE"
+    err "cannot read page count for $pdf"
     return 1
   fi
   
   # Build prefix from directory structure
-  local pdf_count
   pdf_count=$(find "$dir" -maxdepth 1 -type f -iname "*.pdf" | wc -l)
-  local prefix
-  local curr_dirname=$(basename "$dir")
-  local parent=$(basename "$(dirname "$dir")")  
-  local grandparent_dir=$(dirname "$(dirname "$dir")")
-  local grandparent=$(basename "$grandparent_dir")
 
   if [[ "$pdf_count" -gt 1 ]]; then
     prefix="$base"
-    echo "WARNING: Multiple PDFs in folder, using PDF name as prefix: $prefix" | tee -a "$ERRFILE"
-    
-    # Check for potential filename conflicts with existing files
-    local conflict_found=false
-    local expected_extensions=()
-    
+    warn "Multiple PDFs in folder, using PDF name as prefix: $prefix"
+	# Check for potential filename conflicts with existing file
     # Determine expected file extensions based on output format
-    if [[ "$OUTFMT" == "tif" ]]; then
-      expected_extensions=("tif")
-    elif [[ "$OUTFMT" == "jpg" ]]; then
-      expected_extensions=("jpg")
-    else
-      expected_extensions=("tif" "jpg" "pbm" "pgm" "ppm")
-    fi
+	expected_extensions=()
+    if [[ "$OUTFMT" == "tif" ]]; then expected_extensions=("tif")
+    elif [[ "$OUTFMT" == "jpg" ]]; then expected_extensions=("jpg")
+    else expected_extensions=("tif" "jpg" "pbm" "pgm" "ppm"); fi
     
     # Check for conflicts with existing files
     for ext in "${expected_extensions[@]}"; do
       if ls "${dir}/${prefix}_"[0-9][0-9][0-9][0-9]."${ext}" >/dev/null 2>&1; then
-        conflict_found=true
-        echo "ERROR: Filename conflict detected in $pdf" | tee -a "$ERRFILE"
-        echo "ERROR: Existing files found matching pattern ${prefix}_NNNN.${ext}" | tee -a "$ERRFILE"
-        echo "ERROR: Manual intervention required - please rename or move existing files" | tee -a "$ERRFILE"
-        break
+        err "Filename conflict detected in $pdf (found ${prefix}_NNNN.${ext})"
+        return 1
       fi
     done
-    
-    if [[ "$conflict_found" == true ]]; then
-      return 1
-    fi
-    
   else
     # Single PDF in folder - use directory structure naming
     if [[ -n "$grandparent" && "$grandparent" != "/" && "$grandparent" != "." ]]; then
-      prefix="${grandparent}_${parent}_nr_${curr_dirname}"
-      
+      prefix="${grandparent}_${parent}_nr_${curr_dirname}"      
       # Check for filename conflicts in single PDF scenario
-      local conflict_found=false
-      local expected_extensions=()
-      
-      if [[ "$OUTFMT" == "tif" ]]; then
-        expected_extensions=("tif")
-      elif [[ "$OUTFMT" == "jpg" ]]; then
-        expected_extensions=("jpg")
-      else
-        expected_extensions=("tif" "jpg" "pbm" "pgm" "ppm")
-      fi
+      expected_extensions=()
+      if [[ "$OUTFMT" == "tif" ]]; then expected_extensions=("tif")
+      elif [[ "$OUTFMT" == "jpg" ]]; then expected_extensions=("jpg")
+      else expected_extensions=("tif" "jpg" "pbm" "pgm" "ppm"); fi
       
       for ext in "${expected_extensions[@]}"; do
         if ls "${dir}/${prefix}_"[0-9][0-9][0-9][0-9]."${ext}" >/dev/null 2>&1; then
-          conflict_found=true
-          echo "WARNING: Potential filename conflict in $pdf" | tee -a "$ERRFILE"
-          echo "WARNING: Existing files found matching pattern ${prefix}_NNNN.${ext}" | tee -a "$ERRFILE"
-          echo "WARNING: Proceeding with extraction - manual verification recommended" | tee -a "$ERRFILE"
+          warn "Potential filename conflict in $pdf (found ${prefix}_NNNN.${ext}) - proceeding"
           break
         fi
       done
-      
     else
       prefix="${base}"
     fi
@@ -162,10 +159,9 @@ process_pdf() {
  
   # sanitize prefix (replace spaces with underscore to be safe)
   prefix="${prefix// /_}"
+  temp_prefix="${prefix}_temp_$$"  # Use temporary prefix to avoid conflicts
 
   # --- Extract images ---
-  local temp_prefix="${prefix}_temp_$$"  # Use temporary prefix to avoid conflicts
-  
   if [[ "$OUTFMT" == "tif" ]]; then
     pdfimages -tiff "$pdf" "${dir}/${temp_prefix}" 2>>"$ERRFILE"
   elif [[ "$OUTFMT" == "jpg" ]]; then
@@ -176,37 +172,37 @@ process_pdf() {
   local status=$?
 
   if [[ $status -ne 0 ]]; then
-    echo "ERROR: pdfimages failed for $pdf" | tee -a "$ERRFILE"
-    # Cleanup temporary files
+    err "pdfimages failed for $pdf (status $status)"
     find "$dir" -name "${temp_prefix}-*" -type f -delete 2>/dev/null || true
     return 1
   fi
 
   # List and Count extracted images
-  local extracted
-  extracted=$(ls "${dir}/${temp_prefix}"-* 2>/dev/null || true)  
-  local imgcount
-  imgcount=$(echo "$extracted" | grep -c . || echo 0)
+  mapfile -t extracted_arr < <(find "$dir" -maxdepth 1 -type f -name "${temp_prefix}-*" -print0 | xargs -0 -r -n1 echo || true)
+  imgcount=${#extracted_arr[@]}
 
-  if [[ "$imgcount" -eq 0 ]]; then
-    echo "ERROR: no images extracted from $pdf" | tee -a "$ERRFILE"
+   if [[ "$imgcount" -eq 0 ]]; then
+    err "no images extracted from $pdf"
     return 1
   fi
 
   # Compare page count and image count and if not cleanup wrong images
   if [[ "$imgcount" -ne "$pages" ]]; then
     find "$dir" -name "${temp_prefix}-*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
-    echo "ERROR: mismatch in $pdf (expected $pages, got $imgcount)" | tee -a "$ERRFILE"
+    err "mismatch in $pdf (expected $pages, got $imgcount)"
     return 1
   fi
 
   # Rename extracted files with final names (0001, 0002...) and Cleanup on failure
   local counter=1
-  for file in $extracted; do
-    local ext="${file##*.}"
-    local newname=$(printf "%s_%04d.%s" "${prefix}" "$counter" "$ext")
-    if ! mv "$file" "${dir}/${newname}"; then
-      echo "ERROR: failed to rename $file to $newname" | tee -a "$ERRFILE"
+  # sort files to ensure order
+  IFS=$'\n' sorted=($(printf "%s\n" "${extracted_arr[@]}" | sort))
+  unset IFS
+  for file in "${sorted[@]}"; do
+    ext="${file##*.}"
+    newname=$(printf "%s_%04d.%s" "${prefix}" "$counter" "$ext")
+    if ! mv -n -- "$file" "${dir}/${newname}"; then
+      err "failed to rename $file to $newname"
       find "$dir" -name "${temp_prefix}-*" -type f -delete 2>/dev/null || true
       find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
       return 1
@@ -214,10 +210,10 @@ process_pdf() {
     counter=$((counter+1))
   done
 
-  echo "SUCCESS: $pdf extracted correctly ($imgcount pages)" | tee -a "$LOGFILE"
+  log "SUCCESS: $pdf extracted correctly ($imgcount pages)"
   
   # Move processed PDF, preserving folder structure
-  local processed_dir="$WORKDIR/$TMPPDFDIR"
+  processed_dir="$WORKDIR/$TMPPDFDIR"
   if [[ -n "$grandparent" && "$grandparent" != "/" && "$grandparent" != "." ]]; then
     processed_dir="$processed_dir/$grandparent/$parent/$curr_dirname"
   else
@@ -225,31 +221,29 @@ process_pdf() {
   fi
 
   # Create directory structure if needed
-  if [[ ! -d "$processed_dir" ]]; then
-    if ! mkdir -p "$processed_dir" 2>>"$ERRFILE"; then
-      echo "ERROR: cannot create directory $processed_dir" | tee -a "$ERRFILE"
-      find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
-      return 1
-    fi
-  fi
-  
-  local target="$processed_dir/$(basename "$pdf")"
-  if [[ -f "$target" ]]; then
-  local counter=1
-  while [[ -f "${target%.pdf}_duplicate_${counter}.pdf" ]]; do
-    ((counter++))
-  done
-  target="${target%.pdf}_duplicate_${counter}.pdf"
-  echo "WARNING: Renamed duplicate to $(basename "$target")" | tee -a "$ERRFILE"
-  fi
-  
-  if mv "$pdf" "$target"; then
-    echo "Moved $pdf -> $target" | tee -a "$LOGFILE"
-  else
-    echo "ERROR: failed to move $pdf to $target" | tee -a "$ERRFILE"
+  if ! mkdir -p "$processed_dir" 2>>"$ERRFILE"; then
+    err "cannot create directory $processed_dir"
     find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
     return 1
   fi
+  
+  target="$processed_dir/$(basename "$pdf")"
+  if [[ -f "$target" ]]; then
+    local dupc=1
+    while [[ -f "${target%.pdf}_duplicate_${dupc}.pdf" ]]; do ((dupc++)); done
+    target="${target%.pdf}_duplicate_${dupc}.pdf"
+    warn "Renamed duplicate to $(basename "$target")"
+  fi
+  
+  if mv -n -- "$pdf" "$target"; then
+    log "Moved $pdf -> $target"
+  else
+    err "failed to move $pdf to $target"
+    find "$dir" -name "${prefix}_*" -type f ! -name "*.pdf" -delete 2>/dev/null || true
+    return 1
+  fi
+
+  return 0
 }
 
 # --- Main processing loop ---
@@ -257,47 +251,31 @@ total_pdfs=0
 processed_pdfs=0
 failed_pdfs=0
 
-mapfile -t pdf_array < <(find "$WORKDIR" -type f -iname "*.pdf" -not -path "*/$TMPPDFDIR/*")
-
-for pdf in "${pdf_array[@]}"; do
-  echo "DEBUG: Found PDF: $pdf"
+while IFS= read -r -d '' pdf; do
   ((total_pdfs++))
+  echo "DEBUG: Found PDF: $pdf"
   echo "Progress: Processing PDF $total_pdfs - $(basename "$pdf")"
-  
   if process_pdf "$pdf"; then
     ((processed_pdfs++))
   else
     ((failed_pdfs++))
   fi
-done
+done < <(find "$WORKDIR" -type f -iname "*.pdf" -not -path "*/$TMPPDFDIR/*" -print0)
 
 # --- Final summary ---
 echo | tee -a "$LOGFILE"
-echo "=== PROCESSING SUMMARY ===" | tee -a "$LOGFILE"
-echo "Total PDFs found: $total_pdfs" | tee -a "$LOGFILE"
-echo "Successfully processed: $processed_pdfs" | tee -a "$LOGFILE"
-echo "Failed: $failed_pdfs" | tee -a "$LOGFILE"
+log "=== PROCESSING SUMMARY ==="
+log "Total PDFs found: $total_pdfs"
+log "Successfully processed: $processed_pdfs"
+log "Failed: $failed_pdfs"
 
-# Move log files to processed_pdfs with proper error handling
-if [[ -f "$LOGFILE" ]]; then
-  if cp "$LOGFILE" "$WORKDIR/$TMPPDFDIR/"; then
-    rm -f "$LOGFILE"
-    echo "Moved log file to $WORKDIR/$TMPPDFDIR/"
-  else
-    echo "WARNING: Failed to move log file to $TMPPDFDIR directory"
-  fi
+# Move final logs to processed_pdfs if possible
+if [[ -d "$WORKDIR/$TMPPDFDIR" ]]; then
+  mv -f "$LOGFILE" "$WORKDIR/$TMPPDFDIR/" 2>/dev/null || warn "Failed to move log file to $WORKDIR/$TMPPDFDIR/"
+  mv -f "$ERRFILE" "$WORKDIR/$TMPPDFDIR/" 2>/dev/null || warn "Failed to move error file to $WORKDIR/$TMPPDFDIR/"
 fi
 
-if [[ -f "$ERRFILE" ]]; then
-  if cp "$ERRFILE" "$WORKDIR/$TMPPDFDIR/"; then
-    rm -f "$ERRFILE"
-    echo "Moved error file to $WORKDIR/$TMPPDFDIR/"
-  else
-    echo "WARNING: Failed to move error file to $TMPPDFDIR directory"
-  fi
-fi
-
-# Release lock
+# Release lock and normal exit
 flock -u 200
-
-echo "Done. Check log files in $WORKDIR/$TMPPDFDIR/ for details."
+trap - EXIT
+exit 0
