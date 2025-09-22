@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # -----------------------------------------------------------------------------
-# delete_pdfs_with_list.sh
+# delete_pdfs_by_list.sh
 # version 1.5
 # Author: Mustafa Demiroglu
 #

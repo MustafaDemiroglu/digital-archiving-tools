@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: move_folder.sh (Version: 3.4)
+# Script Name: move_folder_by_csv.sh (Version: 3.4)
 # Author: Mustafa Demiroglu
 # Description:
 #   This script reads a CSV file that contains a list of folder paths (one per line).

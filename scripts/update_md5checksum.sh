@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: md5_update_paths.sh (Version 8.0)
+# Script Name: update_md5checksum.sh (Version 8.0)
 #
 # Description:
 #   This script updates MD5 checksum files by changing file paths and names
