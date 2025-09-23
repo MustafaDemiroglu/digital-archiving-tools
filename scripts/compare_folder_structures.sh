@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: compare_folder_structures.sh
-# Version 2.2
+# Version 3.1
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -100,7 +100,7 @@ echo "Target:    $TARGET_DIR" >> "$LOG_FILE"
 echo "Except:    ${EXCEPT_DIRS[*]:-(none)}" >> "$LOG_FILE"
 echo "Search:    ${SEARCH_DIRS[*]:-(all)}" >> "$LOG_FILE"
 echo "-------------------------------------------------" >> "$LOG_FILE"
-echo "Missing_Directory" > "$CSV_FILE"
+echo "Directory Exist in $REFERENCE_DIR but not in $TARGET_DIR " > "$CSV_FILE"
 
 # Check both directories exist
 if [ ! -d "$REFERENCE_DIR" ]; then
