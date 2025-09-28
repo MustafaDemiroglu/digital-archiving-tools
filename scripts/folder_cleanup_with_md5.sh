@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_cleanup_with_md5.sh
-# Version: 2.5
+# Version: 3.1
 # Author: Mustafa Demiroglu
 # Purpose     : 
 #   Move redundant files/folders (instead of deleting) into a temporary folder
@@ -21,8 +21,8 @@
 ###############################################################################
 
 MD5_FILE="$1"
-TMP_DIR="./_tmp_cleanup"
 datum=$(date +%Y%m%d_%H%M%S)
+TMP_DIR="./_tmp_cleanup_$datum"
 
 LOG_FILE="log_script_$datum.log"
 echo "Logging started for $datum" > "$LOG_FILE"
@@ -76,7 +76,7 @@ process_folder() {
     echo "  → All files identical. Moving entire folder." | tee -a "$LOG_FILE"
     dest="$TMP_DIR/$folder_clean"
     mkdir -p "$(dirname "$dest")"
-    rsync -av --remove-source-files "$folder_clean" "$dest" | tee -a "$LOG_FILE"
+	mv "$folder_clean" "$dest" | tee -a "$LOG_FILE"
     # Remove MD5 entries for entire folder if file provided
     if [[ -f "$MD5_FILE" ]]; then
       grep -v "$folder_clean/" "$MD5_FILE" > "${MD5_FILE}.tmp" && mv "${MD5_FILE}.tmp" "$MD5_FILE"
