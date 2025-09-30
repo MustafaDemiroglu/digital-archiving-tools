@@ -1,6 +1,6 @@
 #!/bin/bash
 ###############################################################################
-# Script Name: organize_dirs_from_filenames.sh (v 3.1)
+# Script Name: organize_dirs_from_filenames.sh (v 3.2)
 # Author: Mustafa Demiroglu 
 # Description:
 #   This script organizes .tif files into specific folder structures based on
@@ -27,12 +27,8 @@ valid_extensions="tif|TIF|TIFF|jpg|jpeg|pdf"
 
 # Loop through all the image and document files with relevant extensions in the current directory
 for file in *; do	
-
-    # Print the filename to debug
-    echo "Processing file: $file" 
-    ext="${file##*.}"	
-	
 	# Check if the file extension is valid
+	ext="${file##*.}"	
     if [[ ! "$ext" =~ ^($valid_extensions)$ ]]; then
         echo "Skipping file '$file' - invalid file extension."
         continue
@@ -40,7 +36,7 @@ for file in *; do
 	
     # Extract parts of the filename using regular expressions
     # We assume the format is: <haus>_<bestand>_nr_<stück>_<number>.tif
-	if [[ "$file" =~ ^([a-zA-Z0-9]+)_([a-zA-Z0-9]+)_nr_([a-zA-Z0-9_-]+)_([0-9]+)\.${ext}$ ]]; then
+	if [[ "$file" =~ ^([a-zA-Z0-9]+)_([a-zA-Z0-9_-]+)_nr_([a-zA-Z0-9_-]+)_([0-9]+)\.${ext}$ ]]; then
     	haus="${BASH_REMATCH[1]}"     # Haus (e.g., hstam)
         bestand="${BASH_REMATCH[2]}"  # Bestand (e.g., karten)
         stueck="${BASH_REMATCH[3]}"   # Stück (e.g., c_261_b--2)
