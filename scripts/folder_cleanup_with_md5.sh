@@ -2,11 +2,12 @@
 
 ###############################################################################
 # Script Name : folder_cleanup_with_md5.sh
-# Version: 3.1
+# Version: 4.2
 # Author: Mustafa Demiroglu
 # Purpose     : 
 #   Move redundant files/folders (instead of deleting) into a temporary folder
 #   after comparing with /media/cepheus. Optionally update given MD5 file.
+#   Files are matched by MD5 hash, not by filename.
 #
 # Usage:
 #   ./folder_cleanup_with_md5.sh [optional-md5-file]
@@ -23,7 +24,6 @@
 MD5_FILE="$1"
 datum=$(date +%Y%m%d_%H%M%S)
 TMP_DIR="./_tmp_cleanup_$datum"
-
 LOG_FILE="log_script_$datum.log"
 echo "Logging started for $datum" > "$LOG_FILE"
 
@@ -34,69 +34,83 @@ trim() {
   echo -n "$1" | sed 's#^\./##'
 }
 
-# Function: compare MD5 of two files
-same_file_md5() {
-  local f1="$1"
-  local f2="$2"
-  [[ ! -f "$f1" || ! -f "$f2" ]] && return 1
-  local h1=$(md5sum "$f1" | awk '{print $1}')
-  local h2=$(md5sum "$f2" | awk '{print $1}')
-  [[ "$h1" == "$h2" ]]
+# Function: get MD5 hash of a file
+get_md5() {
+    local f="$1"
+    [[ ! -f "$f" ]] && return 1
+    md5sum "$f" | awk '{print $1}'
 }
 
 # Function: process one folder
 process_folder() {
-  local folder="$1"
-  local folder_clean=$(trim "$folder")
-  local cepheus="/media/cepheus/$folder_clean"
-
-  [[ ! -d "$cepheus" ]] && return
-
-  echo "Processing: $folder_clean" | tee -a "$LOG_FILE"
-
-  local all_match=true
-
-  # Track identical files
-  identical_files=()
-
-  while IFS= read -r -d '' f; do
-    rel=${f#"$folder_clean"/}
-    if [[ -f "$cepheus/$rel" ]]; then
-      if same_file_md5 "$f" "$cepheus/$rel"; then
-        identical_files+=("$f")
-      else
-        all_match=false
-      fi
-    else
-      all_match=false
-    fi
-  done < <(find "$folder_clean" -type f -print0)
-
-  if $all_match; then
-    echo "  → All files identical. Moving entire folder." | tee -a "$LOG_FILE"
-    dest="$TMP_DIR/$folder_clean"
-    mkdir -p "$(dirname "$dest")"
-	mv "$folder_clean" "$dest" | tee -a "$LOG_FILE"
-    # Remove MD5 entries for entire folder if file provided
-    if [[ -f "$MD5_FILE" ]]; then
-      grep -v "$folder_clean/" "$MD5_FILE" > "${MD5_FILE}.tmp" && mv "${MD5_FILE}.tmp" "$MD5_FILE"
-    fi
-  else
-    if [[ ${#identical_files[@]} -gt 0 ]]; then
-      echo "  → ${#identical_files[@]} identical file(s) found. Moving them." | tee -a "$LOG_FILE"
-      for f in "${identical_files[@]}"; do
-        dest="$TMP_DIR/$f"
-        mkdir -p "$(dirname "$dest")"
-        mv "$f" "$dest" | tee -a "$LOG_FILE"
-        # Remove MD5 entry if file provided
-        if [[ -f "$MD5_FILE" ]]; then
-          grep -v "  $f\$" "$MD5_FILE" > "${MD5_FILE}.tmp" && mv "${MD5_FILE}.tmp" "$MD5_FILE"
+    local folder="$1"
+    local folder_clean=$(trim "$folder")
+    local cepheus="/media/cepheus/$folder_clean"
+    
+    [[ ! -d "$cepheus" ]] && return
+    
+    echo "Processing: $folder_clean" | tee -a "$LOG_FILE"
+    
+    # Build MD5 hash maps for both directories
+    declare -A source_md5_to_file
+    declare -A cepheus_md5_to_file
+    
+    # Get MD5 hashes for source files
+    while IFS= read -r -d '' f; do
+        local md5=$(get_md5 "$f")
+        if [[ -n "$md5" ]]; then
+            source_md5_to_file["$md5"]="$f"
         fi
-      done
+    done < <(find "$folder_clean" -type f -print0)
+    
+    # Get MD5 hashes for cepheus files
+    while IFS= read -r -d '' f; do
+        local md5=$(get_md5 "$f")
+        if [[ -n "$md5" ]]; then
+            cepheus_md5_to_file["$md5"]="$f"
+        fi
+    done < <(find "$cepheus" -type f -print0)
+    
+    local total_source=${#source_md5_to_file[@]}
+    local matched_count=0
+    declare -a identical_files
+    
+    # Check each source file's MD5 against cepheus
+    for md5 in "${!source_md5_to_file[@]}"; do
+        if [[ -n "${cepheus_md5_to_file[$md5]}" ]]; then
+            identical_files+=("${source_md5_to_file[$md5]}")
+            ((matched_count++))
+        fi
+    done
+    
+    # Decision logic
+    if [[ $matched_count -eq $total_source && $total_source -gt 0 ]]; then
+        echo " → All $total_source file(s) identical (by MD5). Moving entire folder." | tee -a "$LOG_FILE"
+        dest="$TMP_DIR/$folder_clean"
+        mkdir -p "$(dirname "$dest")"
+        mv "$folder_clean" "$dest" | tee -a "$LOG_FILE"
+        
+        # Remove MD5 entries for entire folder if file provided
+        if [[ -n "$MD5_FILE" && -f "$MD5_FILE" ]]; then
+            grep -v "$folder_clean/" "$MD5_FILE" > "${MD5_FILE}.tmp" && mv "${MD5_FILE}.tmp" "$MD5_FILE"
+        fi
     else
-      echo "  → No identical files. Nothing to move." | tee -a "$LOG_FILE"
+        if [[ ${#identical_files[@]} -gt 0 ]]; then
+            echo " → ${#identical_files[@]} of $total_source file(s) identical (by MD5). Moving them." | tee -a "$LOG_FILE"
+            for f in "${identical_files[@]}"; do
+                dest="$TMP_DIR/$f"
+                mkdir -p "$(dirname "$dest")"
+                mv "$f" "$dest" | tee -a "$LOG_FILE"
+                
+                # Remove MD5 entry if file provided
+                if [[ -n "$MD5_FILE" && -f "$MD5_FILE" ]]; then
+                    grep -v " $f\$" "$MD5_FILE" > "${MD5_FILE}.tmp" && mv "${MD5_FILE}.tmp" "$MD5_FILE"
+                fi
+            done
+        else
+            echo " → No identical files (by MD5). Nothing to move." | tee -a "$LOG_FILE"
+        fi
     fi
-  fi
 }
 
 # Main
