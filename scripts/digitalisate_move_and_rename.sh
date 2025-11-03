@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: digitalisate_move_and_rename.sh (Version 3.1)
+# Script Name: digitalisate_move_and_rename.sh (Version 3.2)
 #
 # Description:
 #   This script helps archivists move and rename media files safely
@@ -173,7 +173,7 @@ get_next_number() {
         if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -gt "$max_num" ]; then
             max_num=$num
         fi
-    done < <(find "$dst_dir" -maxdepth 1 -type f -iregex "$SUPPORTED_REGEX" -print0 2>/dev/null)
+	done < <(find "$dst_dir" -maxdepth 1 -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.tif" -o -iname "*.tiff" -o -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.wav" -o -iname "*.mp3" \) -print0 2>/dev/null)
 
     # Format 2: any basename ending with digits before extension
     while IFS= read -r -d '' file; do
@@ -184,7 +184,7 @@ get_next_number() {
         if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -gt "$max_num" ]; then
             max_num=$num
         fi
-    done < <(find "$dst_dir" -maxdepth 1 -type f -iregex "$SUPPORTED_REGEX" -print0 2>/dev/null)
+	done < <(find "$dst_dir" -maxdepth 1 -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.tif" -o -iname "*.tiff" -o -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.wav" -o -iname "*.mp3" \) -print0 2>/dev/null)
 
     echo $((max_num + 1))
 }
@@ -339,8 +339,8 @@ info "Starting file processing: $FILE"
     fi
 
     # Check supported file count
-    FILE_COUNT=$(find "$SRC" -maxdepth 1 -type f -iregex "$SUPPORTED_REGEX" | wc -l)
-    if [ "$FILE_COUNT" -eq 0 ]; then
+    FILE_COUNT=$(find "$SRC" -maxdepth 1 -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.tif" -o -iname "*.tiff" -o -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.wav" -o -iname "*.mp3" \) | wc -l)
+	if [ "$FILE_COUNT" -eq 0 ]; then
       warning "No supported media files in source folder: $SRC - Skipping..."
       log_action "SKIPPED: No supported files - $SRC" "WARNING"
       continue
@@ -364,7 +364,7 @@ info "Starting file processing: $FILE"
     fi
 
     # Collect source files (sorted), case-insensitive by regex
-    mapfile -t SOURCE_FILES < <(find "$SRC" -maxdepth 1 -type f -iregex "$SUPPORTED_REGEX" | sort)
+    mapfile -t SOURCE_FILES < <(find "$SRC" -maxdepth 1 -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.tif" -o -iname "*.tiff" -o -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.wav" -o -iname "*.mp3" \) | sort)
 
     if [ -n "$NEWNAME" ] && [ "$NEWNAME" = "rename" ]; then
       # --- SEQUENTIAL RENAME MODE ---
@@ -506,7 +506,7 @@ if [ "$DRY_RUN" = false ]; then
 
         if [ -d "$SRC" ]; then
           # Check if folder is empty of supported types
-          if [ -z "$(find "$SRC" -maxdepth 1 -type f -iregex "$SUPPORTED_REGEX")" ]; then
+		  if [ -z "$(find "$SRC" -maxdepth 1 -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.tif" -o -iname "*.tiff" -o -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.wav" -o -iname "*.mp3" \))" ]; then
             if rmdir "$SRC" 2>/dev/null; then
               success "Deleted: $SRC"
               log_action "Empty source folder deleted: $SRC"
