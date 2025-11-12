@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Script Name: split_x_detector.py V:2.1
+
 This script automatically splits large PDF files into smaller ones 
 based on pages that contain a visible 'X' separator mark.
+
+Pdfs shoud be named in sequence like: hhstaw_519--3_nr_1.pdf, hhstaw_519--3_nr_375.pdf ...
 
 Main Functions:
 1. Detect 'X' pages using OpenCV templates (multi-scale matching).
@@ -20,78 +24,103 @@ Usage:
 If the path argument is missing or invalid, the script will log the error and exit.
 """
 
-import cv2
 import os
 import sys
+import cv2
+import gc
+import time
 import numpy as np
+from tqdm import tqdm
 from datetime import datetime
 from pdf2image import convert_from_path
 from PyPDF2 import PdfReader, PdfWriter
 
-# ----- CONFIGURATION -----
+# ---------------- CONFIGURATION ----------------
 TEMPLATE_DIR = "/media/cepheus/ingest/testcharts_bestandsblatt/x_templates/"
-LOG_FILE = "process.log"
-ERROR_FILE = "error.log"
+LOG_DIR = "logs"
 THRESHOLD = 0.5
-SCALES = [0.5, 0.75, 1.0, 1.25, 1.5]
-# --------------------------
+SCALES = [0.5, 0.75, 1.0, 1.25]
+# ------------------------------------------------
 
-def log_message(message: str):
-    """Write log messages to process.log with timestamp."""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(LOG_FILE, "a", encoding="utf-8") as log:
-        log.write(f"[{timestamp}] {message}\n")
-    print(message)
+timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+LOG_FILE = os.path.join(LOG_DIR, f"process_{timestamp}.log")
+ERROR_FILE = os.path.join(LOG_DIR, f"error_{timestamp}.log")
 
-def log_error(error_message: str):
-    """Write errors to error.log with timestamp."""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(ERROR_FILE, "a", encoding="utf-8") as log:
-        log.write(f"[{timestamp}] ERROR: {error_message}\n")
-    print(f"❌ {error_message}")
+os.makedirs(LOG_DIR, exist_ok=True)
+
+# ---------------- LOGGING HELPERS ----------------
+def log_message(msg: str):
+    with open(LOG_FILE, "a", encoding="utf-8") as f:
+        f.write(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {msg}\n")
+
+def log_error(msg: str):
+    with open(ERROR_FILE, "a", encoding="utf-8") as f:
+        f.write(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] ERROR: {msg}\n")
+# -------------------------------------------------
+
 
 def detect_any_x_multiscale(image, templates, threshold=THRESHOLD, scales=SCALES):
-    """Detect if any of the provided templates match an 'X' mark on the image."""
-    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    """Return True if any X template is detected in the image."""
+    gray = cv2.cvtColor(np.array(image), cv2.COLOR_BGR2GRAY)
     for template in templates:
         t_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
         for scale in scales:
             w, h = int(t_gray.shape[1] * scale), int(t_gray.shape[0] * scale)
-            if w < 1 or h < 1:
+            if w < 2 or h < 2:
                 continue
             resized = cv2.resize(t_gray, (w, h))
-            if gray_image.shape[0] < h or gray_image.shape[1] < w:
+            if gray.shape[0] < h or gray.shape[1] < w:
                 continue
-            result = cv2.matchTemplate(gray_image, resized, cv2.TM_CCOEFF_NORMED)
-            _, max_val, _, _ = cv2.minMaxLoc(result)
-            if max_val >= threshold:
+            res = cv2.matchTemplate(gray, resized, cv2.TM_CCOEFF_NORMED)
+            if cv2.minMaxLoc(res)[1] >= threshold:
                 return True
     return False
 
-def split_pdf_on_x(pdf_path, templates):
-    """Split a PDF into smaller ones based on detected 'X' marks."""
+
+def safe_convert_page(pdf_path, page_num):
+    """Safely convert a single page from PDF to image."""
+    return convert_from_path(pdf_path, first_page=page_num, last_page=page_num)[0]
+
+
+def build_output_folder(base_name):
+    """Build correct folder structure like hhstaw/509/1/ etc."""
+    parts = base_name.split("_")
     try:
-        base_name = os.path.basename(pdf_path)
-        base_no_ext = os.path.splitext(base_name)[0]
+        root = parts[0]
+        subfolder = parts[1]
+        main_no = parts[2] if len(parts) > 2 else "1"
+    except IndexError:
+        raise ValueError(f"Unexpected filename pattern: {base_name}")
 
-        # Example: hhstaw_519--3_nr_1.pdf -> hhstaw/519--3/
-        parts = base_no_ext.split("_nr_")[0]
-        folder_base = os.path.join("/media/cepheus", parts.replace("_", "/"))
+    folder_base = os.path.join("/media/cepheus", root, subfolder, main_no)
+    if os.path.exists(folder_base):
+        folder_base += "_undefined"
+    os.makedirs(folder_base, exist_ok=True)
+    return folder_base
 
-        images = convert_from_path(pdf_path)
+
+def split_pdf_on_x(pdf_path, templates):
+    """Split large PDF safely without overloading RAM."""
+    base_name = os.path.splitext(os.path.basename(pdf_path))[0]
+    try:
+        folder_base = build_output_folder(base_name)
         reader = PdfReader(pdf_path)
-        num_pages = len(images)
+        num_pages = len(reader.pages)
         log_message(f"Processing {pdf_path} ({num_pages} pages).")
 
         x_indices = []
-        for i, img in enumerate(images):
-            img_np = np.array(img)
-            roi = img_np[0:img_np.shape[0] // 2, :]
-            if detect_any_x_multiscale(roi, templates):
-                log_message(f"X detected on page {i+1}")
-                x_indices.append(i)
-            else:
-                log_message(f"No X on page {i+1}")
+        pbar = tqdm(range(1, num_pages + 1), desc=f"Scanning {base_name}", unit="pg", dynamic_ncols=True)
+
+        for i in pbar:
+            try:
+                img = safe_convert_page(pdf_path, i)
+                roi = np.array(img)[0:int(img.height / 2), :]
+                if detect_any_x_multiscale(roi, templates):
+                    x_indices.append(i - 1)
+                del img
+                gc.collect()
+            except Exception as e:
+                log_error(f"Page {i} conversion failed: {e}")
 
         if not x_indices:
             x_indices = [0]
@@ -110,54 +139,45 @@ def split_pdf_on_x(pdf_path, templates):
             folder_out = os.path.join(folder_base, str(block_idx))
             os.makedirs(folder_out, exist_ok=True)
 
-            pdf_out_name = f"{base_no_ext.split('_nr_')[0]}_nr_{block_idx}.pdf"
+            pdf_out_name = f"{base_name.split('_nr_')[0]}_nr_{block_idx}.pdf"
             pdf_out_path = os.path.join(folder_out, pdf_out_name)
 
             with open(pdf_out_path, "wb") as f:
                 writer.write(f)
+
             log_message(f"Saved split PDF: {pdf_out_path}")
 
-            # Convert each split PDF to images
-            try:
-                pages = convert_from_path(pdf_out_path)
-                for i, page in enumerate(pages, start=1):
-                    # Determine image format dynamically
-                    fmt = page.format if hasattr(page, 'format') else "JPEG"
-                    fmt = fmt if fmt else "JPEG"
-
-                    img_ext = fmt.lower() if fmt.lower().startswith(('jpg', 'jpeg', 'png', 'tif')) else "jpg"
-                    img_name = f"{base_no_ext.split('_nr_')[0]}_nr_{block_idx}_{i:04d}.{img_ext}"
-                    img_path = os.path.join(folder_out, img_name)
-                    page.save(img_path, fmt.upper())
-                log_message(f"Extracted {len(pages)} pages as images into {folder_out}")
-            except Exception as e:
-                log_error(f"Image extraction failed for {pdf_out_path}: {e}")
+            # Convert to image per page (RAM safe)
+            for page_num in range(1, len(writer.pages) + 1):
+                try:
+                    img = convert_from_path(pdf_out_path, first_page=page_num, last_page=page_num)[0]
+                    fmt = getattr(img, "format", "JPEG") or "JPEG"
+                    ext = fmt.lower() if fmt.lower() in ("jpeg", "jpg", "png", "tiff") else "jpg"
+                    img_name = f"{base_name}_nr_{block_idx}_{page_num:04d}.{ext}"
+                    img.save(os.path.join(folder_out, img_name), fmt.upper())
+                    del img
+                    gc.collect()
+                except Exception as e:
+                    log_error(f"Image export failed for page {page_num}: {e}")
 
         os.remove(pdf_path)
         log_message(f"Deleted original PDF: {pdf_path}")
-        log_message("✅ Processing complete.\n")
+        log_message(f"✅ {base_name} completed successfully.\n")
 
     except Exception as e:
         log_error(f"Failed to process {pdf_path}: {e}")
 
+
 def main():
-    """Main entry point."""
     if len(sys.argv) < 2:
-        log_error("No input directory provided.")
         print("Usage: python3 split_x_detector.py /path/to/pdf_directory/")
         sys.exit(1)
 
     input_dir = sys.argv[1]
-
     if not os.path.isdir(input_dir):
-        log_error(f"Invalid path: {input_dir}")
+        log_error(f"Invalid directory: {input_dir}")
         sys.exit(1)
 
-    if not os.path.isdir(TEMPLATE_DIR):
-        log_error(f"Template directory not found: {TEMPLATE_DIR}")
-        sys.exit(1)
-
-    # Load templates
     templates = []
     for f in os.listdir(TEMPLATE_DIR):
         if f.lower().endswith((".png", ".jpg", ".jpeg", ".tiff")):
@@ -168,21 +188,21 @@ def main():
         log_error("No valid templates found.")
         sys.exit(1)
 
-    log_message(f"--- Script started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
-    log_message(f"Using template directory: {TEMPLATE_DIR}")
-    log_message(f"Input directory: {input_dir}")
+    log_message(f"--- Script started at {datetime.now():%Y-%m-%d %H:%M:%S} ---")
+    log_message(f"Using template dir: {TEMPLATE_DIR}")
 
-    # Process PDFs
     pdf_files = [f for f in os.listdir(input_dir) if f.lower().endswith(".pdf")]
     if not pdf_files:
-        log_error("No PDF files found in input directory.")
+        log_error("No PDF files found in directory.")
         sys.exit(1)
 
+    print(f"🔹 Processing {len(pdf_files)} PDF file(s)...")
     for file in pdf_files:
-        pdf_path = os.path.join(input_dir, file)
-        split_pdf_on_x(pdf_path, templates)
+        split_pdf_on_x(os.path.join(input_dir, file), templates)
 
+    print("✅ All PDFs processed successfully.")
     log_message("--- Script finished successfully ---\n")
+
 
 if __name__ == "__main__":
     main()
