@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Script Name: split_x_detector.py V:2.1
+Script Name: split_x_detector.py V:3.1
 
 This script automatically splits large PDF files into smaller ones 
 based on pages that contain a visible 'X' separator mark.
@@ -34,6 +34,9 @@ from tqdm import tqdm
 from datetime import datetime
 from pdf2image import convert_from_path
 from PyPDF2 import PdfReader, PdfWriter
+from PIL import Image
+import pytesseract
+import re
 
 # ---------------- CONFIGURATION ----------------
 TEMPLATE_DIR = "/media/cepheus/ingest/testcharts_bestandsblatt/x_templates/"
@@ -81,18 +84,25 @@ def safe_convert_page(pdf_path, page_num):
     """Safely convert a single page from PDF to image."""
     return convert_from_path(pdf_path, first_page=page_num, last_page=page_num)[0]
 
+def get_signatur_from_image(image):
+    """Use Tesseract to extract the 'Signatur' number from an image."""
+    text = pytesseract.image_to_string(image, config='--psm 6')
+    match = re.search(r'Signatur:\s*(\d+/\d+-\d+)', text)
+    if match:
+        return match.group(1)
+    return None
 
-def build_output_folder(base_name):
-    """Build correct folder structure like hhstaw/509/1/ etc."""
+def build_output_folder(base_name, signatur_num):
+    """Build correct folder structure like hhstaw/523/375/ etc."""
     parts = base_name.split("_")
     try:
         root = parts[0]
         subfolder = parts[1]
-        main_no = parts[2] if len(parts) > 2 else "1"
+        main_no = signatur_num
     except IndexError:
         raise ValueError(f"Unexpected filename pattern: {base_name}")
 
-    folder_base = os.path.join("/media/cepheus", root, subfolder, main_no)
+    folder_base = os.path.join("/media/cepheus/secure", root, subfolder, main_no)
     if os.path.exists(folder_base):
         folder_base += "_undefined"
     os.makedirs(folder_base, exist_ok=True)
@@ -153,14 +163,21 @@ def split_pdf_on_x(pdf_path, templates):
                     img = convert_from_path(pdf_out_path, first_page=page_num, last_page=page_num)[0]
                     fmt = getattr(img, "format", "JPEG") or "JPEG"
                     ext = fmt.lower() if fmt.lower() in ("jpeg", "jpg", "png", "tiff", "tif", "ppm") else "jpg"
-                    temp_img_name = f"{base_name}_nr_{block_idx}_{page_num:04d}.{ext}"
-                    # Read image
-                    img = cv2.imread(temp_img_name)
-                    # Convert and save
-                    img_name = f"{base_name}_nr_{block_idx}_{page_num:04d}.tif"
-                    cv2.imwrite(img_name, img)
-                    img.save(os.path.join(folder_out, img_name), fmt.upper())
+                    
+                    # If file is in ppm format, convert to tif
+                    if ext == "ppm":
+                        img_path = f"{base_name}_nr_{block_idx}_{page_num:04d}.tif"
+                        img = Image.open(img_path)
+                        img.save(img_path, 'tif')
+                    # If file is in png format, convert to jpg
+                    if ext == "ppm":
+                        img_path = f"{base_name}_nr_{block_idx}_{page_num:04d}.jpg"
+                        img = Image.open(img_path)
+                        img.save(img_path, 'jpg')    
+                    # Save the image file in the right format (jpg, tif, png, etc.)
+                    img.save(os.path.join(folder_out, img_path), fmt.upper())
                     del img
+                    os.remove(pdf_out_path)
                     gc.collect()
                 except Exception as e:
                     log_error(f"Image export failed for page {page_num}: {e}")
@@ -185,7 +202,7 @@ def main():
 
     templates = []
     for f in os.listdir(TEMPLATE_DIR):
-        if f.lower().endswith((".png", ".jpg", ".jpeg", ".tiff")):
+        if f.lower().endswith((".png", ".jpg", ".jpeg", ".tiff", ".tif", ".ppm")):
             t = cv2.imread(os.path.join(TEMPLATE_DIR, f))
             if t is not None:
                 templates.append(t)
