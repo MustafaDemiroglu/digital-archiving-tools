@@ -152,7 +152,7 @@ def split_pdf_on_x(pdf_path, templates):
                 try:
                     img = convert_from_path(pdf_out_path, first_page=page_num, last_page=page_num)[0]
                     fmt = getattr(img, "format", "JPEG") or "JPEG"
-                    ext = fmt.lower() if fmt.lower() in ("jpeg", "jpg", "png", "tiff") else "jpg"
+                    ext = fmt.lower() if fmt.lower() in ("jpeg", "jpg", "png", "tiff", "tif", "ppm") else "jpg"
                     img_name = f"{base_name}_nr_{block_idx}_{page_num:04d}.{ext}"
                     img.save(os.path.join(folder_out, img_name), fmt.upper())
                     del img
