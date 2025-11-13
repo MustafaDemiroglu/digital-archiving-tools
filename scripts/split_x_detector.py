@@ -100,7 +100,7 @@ def build_output_folder(base_name):
 
 
 def split_pdf_on_x(pdf_path, templates):
-    """Split large PDF safely without overloading RAM."""
+    """Split large PDF to small PDFs safely to avoid overloading RAM."""
     base_name = os.path.splitext(os.path.basename(pdf_path))[0]
     try:
         folder_base = build_output_folder(base_name)
@@ -147,13 +147,18 @@ def split_pdf_on_x(pdf_path, templates):
 
             log_message(f"Saved split PDF: {pdf_out_path}")
 
-            # Convert to image per page (RAM safe)
+            # Convert to image per page
             for page_num in range(1, len(writer.pages) + 1):
                 try:
                     img = convert_from_path(pdf_out_path, first_page=page_num, last_page=page_num)[0]
                     fmt = getattr(img, "format", "JPEG") or "JPEG"
                     ext = fmt.lower() if fmt.lower() in ("jpeg", "jpg", "png", "tiff", "tif", "ppm") else "jpg"
-                    img_name = f"{base_name}_nr_{block_idx}_{page_num:04d}.{ext}"
+                    temp_img_name = f"{base_name}_nr_{block_idx}_{page_num:04d}.{ext}"
+                    # Read image
+                    img = cv2.imread(temp_img_name)
+                    # Convert and save
+                    img_name = f"{base_name}_nr_{block_idx}_{page_num:04d}.tif"
+                    cv2.imwrite(img_name, img)
                     img.save(os.path.join(folder_out, img_name), fmt.upper())
                     del img
                     gc.collect()
