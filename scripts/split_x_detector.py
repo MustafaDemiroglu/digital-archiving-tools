@@ -256,6 +256,9 @@ def split_pdf_on_x(pdf_path, templates):
     # If still no blocks (edge case), create single block
     if not blocks:
         blocks = [(0, num_pages)]
+    
+    # if needen, signatur nr should be taken from filename 
+    signatur_from_filename = extract_signatur_from_filename(base_name)
 
     # -------------------------------------------------------------
     # STEP 2: PROCESS EACH BLOCK (progress level 3: blocks and pages)
@@ -277,8 +280,8 @@ def split_pdf_on_x(pdf_path, templates):
             log_error(f"OCR first page conversion failed for block {block_id} in {base_name}: {e}")
 
         if ocr_signatur is None:
-            ocr_signatur = extract_signatur_from_filename(base_name)
-
+            ocr_signatur = signatur_from_filename
+            signatur_from_filename = signatur_from_filename + 1
         output_folder = build_output_folder(base_name, ocr_signatur)
 
         # Export each page in block individually (progress bar per block)
@@ -305,6 +308,7 @@ def split_pdf_on_x(pdf_path, templates):
     except Exception as e:
         log_error(f"Failed to delete original PDF {pdf_path}: {e}")
 
+    signatur_from_filename = 0
     log_message(f"✔ Completed {base_name}\n")
 
 # ------------------------------------------------
