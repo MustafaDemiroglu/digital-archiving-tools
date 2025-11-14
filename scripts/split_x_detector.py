@@ -59,7 +59,7 @@ TEMPLATE_DIR = "/media/cepheus/ingest/testcharts_bestandsblatt/x_templates/"
 LOG_DIR = "logs"
 THRESHOLD = 0.55          # template match threshold
 SCALES = [0.5, 0.75, 1.0, 1.25]
-#OUTPUT_FORMAT = "jpg"     # allowed: jpg or tiff
+OUTPUT_FORMAT = "tif"     # allowed: jpg or tiff
 # ------------------------------------------------
 
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
