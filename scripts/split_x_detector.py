@@ -59,7 +59,7 @@ TEMPLATE_DIR = "/media/cepheus/ingest/testcharts_bestandsblatt/x_templates/"
 LOG_DIR = "logs"
 THRESHOLD = 0.55          # template match threshold
 SCALES = [0.5, 0.75, 1.0, 1.25]
-OUTPUT_FORMAT = "jpg"     # allowed: jpg or tiff
+#OUTPUT_FORMAT = "jpg"     # allowed: jpg or tiff
 # ------------------------------------------------
 
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -289,7 +289,11 @@ def split_pdf_on_x(pdf_path, templates):
         for p in tqdm(page_range, desc=f"{base_name} blk{block_id}", unit="pg", leave=False, dynamic_ncols=True):
             try:
                 img = convert_from_path(pdf_path, first_page=p, last_page=p)[0]
-                out_name = f"{base_name}_sig_{ocr_signatur}_{p-start:04d}.{OUTPUT_FORMAT}"
+                # To name the images
+                path_parts = base_name.split("_")
+                root_haus = path_parts[0] if len(path_parts) >= 1 else "unknown_haus"
+                subfolder_bestand = path_parts[1] if len(path_parts) >= 2 else "unknown_bestand"
+                out_name = f"{root_haus}_{subfolder_bestand}_nr_{ocr_signatur}_{p-start:04d}.{OUTPUT_FORMAT}"
                 out_path = os.path.join(output_folder, out_name)
                 convert_image_properly(img, out_path, OUTPUT_FORMAT)
                 del img
