@@ -315,6 +315,8 @@ def split_pdf_on_x(pdf_path, templates):
 # MAIN ENTRY
 # ------------------------------------------------
 def main():
+    print("Script has started. First checks the paths and templates")
+
     if len(sys.argv) < 2:
         print("Usage: python3 split_x_detector.py /path/to/pdf_directory/")
         sys.exit(1)
@@ -342,6 +344,7 @@ def main():
         sys.exit(1)
 
     log_message("--- Script started ---")
+    print("Checks are successfully completed. Processing started.")
 
     pdf_files = [f for f in os.listdir(input_dir) if f.lower().endswith(".pdf")]
     if not pdf_files:
