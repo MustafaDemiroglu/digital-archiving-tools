@@ -3,14 +3,19 @@
 """
 Script Name: split_x_detector.py
 Version: 4.2
-Owner: HLA
+Author: HlaDigiTeam
 Licence: MIT
+Description: This script automatically splits large PDF files into smaller ones 
+based on pages that contain a visible 'X' separator mark.
+
+This Script needs: python3 python3-pip poppler-utils tesseract-ocr opencv-python pdf2image pypdf2 pillow pytesseract tqdm numpy
+sudo apt update
+sudo apt install python3 python3-pip
+pip install opencv-python pdf2image pypdf2 pillow pytesseract tqdm numpy
+sudo apt install poppler-utils tesseract-ocr
 
 This script processes a directory containing PDF files and performs
 the following steps in a RAM-safe and sequential manner:
-
-This script automatically splits large PDF files into smaller ones 
-based on pages that contain a visible 'X' separator mark.
 
 Pdfs shoud be named in sequence like: hhstaw_519--3_nr_1.pdf, hhstaw_519--3_nr_375.pdf ...
 
@@ -37,7 +42,7 @@ Main Functions:
 Usage:
     python3 split_x_detector.py /path/to/pdf_directory/
     
-If the path argument o templates is missing or invalid, the script will log the error and exit.
+If the path argument or templates is missing or invalid, the script will log the error and exit.
 """
 
 import os
