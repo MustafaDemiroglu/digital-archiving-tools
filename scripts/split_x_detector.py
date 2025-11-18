@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Script Name: split_x_detector.py
-Version: 5.1
+Version: 5.2
 Author: HlaDigiTeam
 Licence: MIT
 Description: This script automatically splits large PDF files into smaller ones 
@@ -134,54 +134,118 @@ def detect_x(pil_image, templates):
 # ------------------------------------------------
 def extract_signatur_from_image(img):
     """
-    Robust OCR extractor for archive Signatur fields.
-    Accepts variants like:
-        "Signatur: 519/3 – 00180"
-        "Slgnatur 519/3-00180"
-        "Signatur 519/3  180"
-        "SIGNATUR: 519/3-000180"
-    Returns: integer signatur (e.g. 180)
+    OCR extractor for 'Signatur: 519/3 – 00180' lines.
+    Handles:
+        - OCR errors (I→1, l→1, O→0, — → -)
+        - Misread 'Signatur' variants
+        - Noise around numbers
+        - Hard fallbacks
+    Returns: integer (e.g. 180) or None.
     """
-
     try:
-        raw_text = pytesseract.image_to_string(img, config="--psm 6")
+        # ----------- OCR PREPROCESSING (noise reduction) -----------
+        try:
+            import cv2
+            np_img = np.array(img.convert("L"))
 
-        if not raw_text or len(raw_text) < 4:
+            # increase contrast
+            np_img = cv2.equalizeHist(np_img)
+
+            # adaptive threshold (helps with old scans)
+            np_img = cv2.adaptiveThreshold(
+                np_img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY, 31, 15
+            )
+
+            proc_img = Image.fromarray(np_img)
+            raw_text = pytesseract.image_to_string(proc_img, config="--psm 6")
+
+        except Exception:
+            # fallback: raw OCR
+            raw_text = pytesseract.image_to_string(img, config="--psm 6")
+
+        if not raw_text:
             return None
 
         text = raw_text
 
-        # --- Normalization ---
-        text = text.replace("—", "-").replace("–", "-")
-        text = text.replace("“", "").replace("”", "")
-        text = text.replace("|", "/")
-        text = text.replace("I/", "1/")
-        text = text.replace("l", "1")
+        # ----------- NORMALIZATION -----------
+        # universal dash normalization
+        text = text.replace("—", "-").replace("–", "-").replace("-", "-")
 
-        # OCR mistakes for "Signatur"
-        text = re.sub(r"S[il]gnat[ur]+", "Signatur", text, flags=re.IGNORECASE)
+        # typical OCR confusions
+        table = str.maketrans({
+            "O": "0", "o": "0",
+            "|": "/",
+            "I": "1", "l": "1",
+            "“": "", "”": "", '"': "",
+        })
+        text = text.translate(table)
+
+        # remove hidden unicode noise
+        text = re.sub(r"[\u200b\u200c\u200d]", "", text)
 
         # collapse whitespace
-        text = re.sub(r"\s+", " ", text)
+        text = re.sub(r"\s+", " ", text).strip()
 
-        # --- Regex flexible ---
-        # possible: Signatur: 519/3 - 00180
-        pattern = r"Signatur[:\s]*\d+\s*/\s*\d+\s*[-\s]*([0-9]{2,6})"
+        # normalize broken slash patterns
+        text = re.sub(r"(\d)\s*[/]\s*(\d)", r"\1/\2", text)
 
-        match = re.search(pattern, text, re.IGNORECASE)
-        if not match:
+        # normalize broken dash patterns:
+        text = re.sub(r"(\d)\s*-\s*(\d{2,6})", r"\1-\2", text)
+
+
+        # ----------- SIGNATUR LINE ISOLATION -----------
+        # catch lines that contain "Signatur" in any broken OCR form
+        signatur_line = None
+        for line in text.split("\n"):
+            if re.search(r"S[i1l]gnat[ur]+", line, re.IGNORECASE):
+                signatur_line = line.strip()
+                break
+
+        if not signatur_line:
             return None
 
-        number = match.group(1)
 
-        # strip leading zeros safely
-        number = number.lstrip("0")
-        if number == "":
-            number = "0"
+        # ----------- STEP 4 – cleanup line -----------
+        line = signatur_line
 
-        number = int(number)
+        # Fix common OCR distortions:
+        # e.g. "Slgnatur", "Sıgnatur", "Signatnr"
+        line = re.sub(r"S[i1l]gnat[ur]+", "Signatur", line, flags=re.IGNORECASE)
 
-        return number
+        # final whitespace collapse
+        line = re.sub(r"\s+", " ", line)
+
+
+        # ----------- STEP 5 – PRIMARY PATTERN -----------
+        patterns = [
+            r"Signatur[: ]*\d+/\d+-?0*([0-9]{1,6})",     # clean pattern
+            r"Signatur[: ]*\d+/\d+\s+([0-9]{1,6})",      # space instead of dash
+            r"Signatur[: ]*\d+[/ ]\d+[- ]+0*([0-9]{1,6})", # messy separators
+        ]
+
+        for p in patterns:
+            m = re.search(p, line, re.IGNORECASE)
+            if m:
+                num = m.group(1).lstrip("0")
+                if num == "":
+                    num = "0"
+                num = int(num)
+
+                # sanity check: archive signatur cannot be 0 or > 999999
+                if 1 <= num <= 999999:
+                    return num
+
+        # final fallback: last number in that line
+        fallback = re.findall(r"\d{2,6}", line)
+        if fallback:
+            num = fallback[-1].lstrip("0") or "0"
+            num = int(num)
+            if 1 <= num <= 999999:
+                return num
+
+        return None
 
     except Exception as e:
         log_error(f"OCR Signatur extraction failed: {e}")
