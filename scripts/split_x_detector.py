@@ -221,7 +221,7 @@ def build_output_folder(base_name, signatur_number):
         root = parts[0] if len(parts) >= 1 else "unknown_root"
         subfolder = parts[1] if len(parts) >= 2 else "unknown_sub"
 
-    folder = os.path.join("/media/cepheus/secure", root, subfolder, str(signatur_number))
+    folder = os.path.join("/media/cepheus/ingest/hdd_upload/devisenakten/secure", root, subfolder, str(signatur_number))
     if os.path.exists(folder):
         folder = folder + "_undefined"
     os.makedirs(folder, exist_ok=True)
