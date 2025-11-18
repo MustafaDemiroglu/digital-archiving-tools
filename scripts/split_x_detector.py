@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Script Name: split_x_detector.py
-Version: 4.2
+Version: 5.1
 Author: HlaDigiTeam
 Licence: MIT
 Description: This script automatically splits large PDF files into smaller ones 
@@ -134,21 +134,61 @@ def detect_x(pil_image, templates):
 # ------------------------------------------------
 def extract_signatur_from_image(img):
     """
-    Extracts the signatur number from OCR text.
-    Expected pattern:  'Signatur: 519/3-00180'
-    Returned: 180
+    Robust OCR extractor for archive Signatur fields.
+    Accepts variants like:
+        "Signatur: 519/3 – 00180"
+        "Slgnatur 519/3-00180"
+        "Signatur 519/3  180"
+        "SIGNATUR: 519/3-000180"
+    Returns: integer signatur (e.g. 180)
     """
+
     try:
-        text = pytesseract.image_to_string(img, config='--psm 6')
-        match = re.search(r"Signatur[:\s]*\d+/\d+[-\s]*(\d+)", text, re.IGNORECASE)
-        if match:
-            return int(match.group(1).lstrip("0") or "0")
+        raw_text = pytesseract.image_to_string(img, config="--psm 6")
+
+        if not raw_text or len(raw_text) < 4:
+            return None
+
+        text = raw_text
+
+        # --- Normalization ---
+        text = text.replace("—", "-").replace("–", "-")
+        text = text.replace("“", "").replace("”", "")
+        text = text.replace("|", "/")
+        text = text.replace("I/", "1/")
+        text = text.replace("l", "1")
+
+        # OCR mistakes for "Signatur"
+        text = re.sub(r"S[il]gnat[ur]+", "Signatur", text, flags=re.IGNORECASE)
+
+        # collapse whitespace
+        text = re.sub(r"\s+", " ", text)
+
+        # --- Regex flexible ---
+        # possible: Signatur: 519/3 - 00180
+        pattern = r"Signatur[:\s]*\d+\s*/\s*\d+\s*[-\s]*([0-9]{2,6})"
+
+        match = re.search(pattern, text, re.IGNORECASE)
+        if not match:
+            return None
+
+        number = match.group(1)
+
+        # strip leading zeros safely
+        number = number.lstrip("0")
+        if number == "":
+            number = "0"
+
+        number = int(number)
+
+        return number
+
     except Exception as e:
-        log_error(f"OCR failed: {e}")
+        log_error(f"OCR Signatur extraction failed: {e}")
+        return None
 
-    return None
 
-def extract_signatur_from_filename(filename):
+def extract_signatur_counter(filename):
     """
     Example filename: hhstaw_519--3_nr_9.pdf  -> returns: 9
     Fallback: try last integer in filename, else 1
@@ -198,10 +238,10 @@ def convert_image_properly(img, output_path, format_ext):
     try:
         if format_ext.lower() == "jpg":
             rgb = img.convert("RGB")
-            rgb.save(output_path, "JPEG", quality=95)
+            rgb.save(output_path, "JPEG", quality=100)
         else:
-            # use TIFF
-            img.save(output_path, "TIFF", compression="tiff_deflate")
+            # use TIFF - lossless LZW
+            img.save(output_path, "TIFF", compression="tiff_lzw")
     except Exception as e:
         log_error(f"Failed to save image {output_path}: {e}")
         raise
@@ -262,8 +302,8 @@ def split_pdf_on_x(pdf_path, templates):
     if not blocks:
         blocks = [(0, num_pages)]
     
-    # if needen, signatur nr should be taken from filename 
-    signatur_from_filename = extract_signatur_from_filename(base_name)
+    # if needed, signatur nr should be taken from filename 
+    signatur_counter = extract_signatur_counter(base_name)
 
     # -------------------------------------------------------------
     # STEP 2: PROCESS EACH BLOCK (progress level 3: blocks and pages)
@@ -285,9 +325,12 @@ def split_pdf_on_x(pdf_path, templates):
             log_error(f"OCR first page conversion failed for block {block_id} in {base_name}: {e}")
 
         if ocr_signatur is None:
-            ocr_signatur = signatur_from_filename
-            signatur_from_filename = signatur_from_filename + 1
-        output_folder = build_output_folder(base_name, ocr_signatur)
+            signatur = signatur_counter
+        else:
+            signatur = ocr_signatur
+        
+        output_folder = build_output_folder(base_name, signatur)
+        signatur_counter += 1
 
         # Export each page in block individually (progress bar per block)
         page_range = range(start + 1, end + 1)  # convert_from_path uses 1-based pages
@@ -298,7 +341,7 @@ def split_pdf_on_x(pdf_path, templates):
                 path_parts = base_name.split("_")
                 root_haus = path_parts[0] if len(path_parts) >= 1 else "unknown_haus"
                 subfolder_bestand = path_parts[1] if len(path_parts) >= 2 else "unknown_bestand"
-                out_name = f"{root_haus}_{subfolder_bestand}_nr_{ocr_signatur}_{p-start:04d}.{OUTPUT_FORMAT}"
+                out_name = f"{root_haus}_{subfolder_bestand}_nr_{signatur}_{p-start:04d}.{OUTPUT_FORMAT}"
                 out_path = os.path.join(output_folder, out_name)
                 convert_image_properly(img, out_path, OUTPUT_FORMAT)
                 del img
@@ -317,7 +360,6 @@ def split_pdf_on_x(pdf_path, templates):
     except Exception as e:
         log_error(f"Failed to delete original PDF {pdf_path}: {e}")
 
-    signatur_from_filename = 0
     log_message(f"✔ Completed {base_name}\n")
 
 # ------------------------------------------------
