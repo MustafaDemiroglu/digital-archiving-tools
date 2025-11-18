@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Script Name: split_x_detector.py
-Version: 5.2
+Version: 5.4
 Author: HlaDigiTeam
 Licence: MIT
 Description: This script automatically splits large PDF files into smaller ones 
@@ -64,7 +64,23 @@ TEMPLATE_DIR = "/media/cepheus/ingest/testcharts_bestandsblatt/x_templates/"
 LOG_DIR = "logs"
 THRESHOLD = 0.55          # template match threshold
 SCALES = [0.5, 0.75, 1.0, 1.25]
-OUTPUT_FORMAT = "tif"     # allowed: jpg or tiff
+
+# OUTPUT_FORMAT: allowed values (case-insensitive): "tif", "tiff", "jpg", "jpeg"
+OUTPUT_FORMAT = "tif"
+
+# TIFF / JPEG save options to control quality/size
+# TIFF_COMPRESSION = None -> uncompressed TIFF (closest to original PPM size, lossless)
+# Use "tiff_lzw" or "tiff_adobe_deflate" for lossless compression that reduces size but is still lossless.
+TIFF_COMPRESSION = None   # None or "tiff_lzw" or "tiff_adobe_deflate"
+TIFF_DPI = 300            # DPI to embed into saved image files
+
+# JPEG settings (if using JPEG)
+JPEG_QUALITY = 100
+JPEG_SUBSAMPLING = 0      # 0 disables chroma subsampling (best quality)
+
+# RENDER_DPI applied to pdf2image convert_from_path -> controls the pixel resolution of produced images
+RENDER_DPI = 300
+
 # ------------------------------------------------
 
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -90,7 +106,10 @@ def detect_x(pil_image, templates):
     """Returns True if an X-template is detected in the given PIL image."""
     try:
         arr = np.array(pil_image)  # PIL -> HxWxC (RGB)
-        gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
+        if arr.ndim == 2:
+            gray = arr
+        else:
+            gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
     except Exception as e:
         log_error(f"Failed to convert PIL image to gray: {e}")
         return False
@@ -297,15 +316,62 @@ def build_output_folder(base_name, signatur_number):
 def convert_image_properly(img, output_path, format_ext):
     """
     Ensures real conversion of the image to the desired format.
-    format_ext: 'jpg' or 'tiff'
+    format_ext: 'jpg'/'jpeg' or 'tif'/'tiff'
+    - For TIFF: by default saves UNCOMPRESSED if TIFF_COMPRESSION is None (closest to PPM raw size).
+    - For JPEG: saves with highest quality and no chroma subsampling.
+    - Embeds DPI metadata.
     """
     try:
-        if format_ext.lower() == "jpg":
+        ext = format_ext.lower()
+        # Normalize ext values
+        if ext == "tiff":
+            ext = "tif"
+        if ext == "jpeg":
+            ext = "jpg"
+
+        if ext in ("jpg",):
             rgb = img.convert("RGB")
-            rgb.save(output_path, "JPEG", quality=100)
+            save_kwargs = {"quality": JPEG_QUALITY, "subsampling": JPEG_SUBSAMPLING, "dpi": (TIFF_DPI, TIFF_DPI)}
+            rgb.save(output_path, "JPEG", **save_kwargs)
+            return
+
+        # TIFF branch
+        # Preserve grayscale 'L' where possible; otherwise convert to RGB.
+        mode = img.mode
+        if mode == "L":
+            save_img = img
+        elif mode == "RGB":
+            save_img = img
+        elif mode == "P":
+            save_img = img.convert("RGB")
+        elif mode == "CMYK":
+            save_img = img.convert("RGB")
+        elif mode == "RGBA":
+            try:
+                bg = Image.new("RGB", img.size, (255, 255, 255))
+                alpha = img.split()[3]
+                bg.paste(img, mask=alpha)
+                save_img = bg
+            except Exception:
+                save_img = img.convert("RGB")
         else:
-            # use TIFF - lossless LZW
-            img.save(output_path, "TIFF", compression="tiff_lzw")
+            save_img = img.convert("RGB")
+
+        save_kwargs = {"dpi": (TIFF_DPI, TIFF_DPI)}
+        if TIFF_COMPRESSION:
+            save_kwargs["compression"] = TIFF_COMPRESSION
+        # If TIFF_COMPRESSION is None, we intentionally do not add the compression kwarg (uncompressed TIFF)
+
+        try:
+            save_img.save(output_path, "TIFF", **save_kwargs)
+        except Exception:
+            # fallback: try without kwargs
+            try:
+                save_img.save(output_path, "TIFF")
+            except Exception as e:
+                log_error(f"Failed to save TIFF {output_path}: {e}")
+                raise
+
     except Exception as e:
         log_error(f"Failed to save image {output_path}: {e}")
         raise
@@ -400,14 +466,24 @@ def split_pdf_on_x(pdf_path, templates):
         page_range = range(start + 1, end + 1)  # convert_from_path uses 1-based pages
         for p in tqdm(page_range, desc=f"{base_name} blk{block_id}", unit="pg", leave=False, dynamic_ncols=True):
             try:
-                img = convert_from_path(pdf_path, first_page=p, last_page=p)[0]
+                img = convert_from_path(pdf_path, first_page=p, last_page=p, dpi=RENDER_DPI, fmt="ppm")[0]
                 # To name the images
                 path_parts = base_name.split("_")
                 root_haus = path_parts[0] if len(path_parts) >= 1 else "unknown_haus"
                 subfolder_bestand = path_parts[1] if len(path_parts) >= 2 else "unknown_bestand"
-                out_name = f"{root_haus}_{subfolder_bestand}_nr_{signatur}_{p-start:04d}.{OUTPUT_FORMAT}"
+              
+                # normalize extension
+                out_ext = OUTPUT_FORMAT.lower()
+                if out_ext == "tiff":
+                    out_ext = "tif"
+                if out_ext == "jpeg":
+                    out_ext = "jpg"
+
+
+                out_name = f"{root_haus}_{subfolder_bestand}_nr_{signatur}_{p-start:04d}.{out_ext}"
                 out_path = os.path.join(output_folder, out_name)
-                convert_image_properly(img, out_path, OUTPUT_FORMAT)
+
+                convert_image_properly(img, out_path, out_ext)
                 del img
                 gc.collect()
             except Exception as e:
