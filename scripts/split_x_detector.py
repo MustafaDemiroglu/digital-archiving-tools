@@ -214,7 +214,7 @@ def extract_signatur_from_image(img):
 # OCR SIGNATUR EXTRACTION
 # ------------------------------------------------
 def extract_signatur_from_image(img):
-    """
+   
     OCR extractor for 'Signatur: 519/3 – 00180' lines.
     Handles:
         - OCR errors (I→1, l→1, O→0, — → -)
@@ -222,7 +222,7 @@ def extract_signatur_from_image(img):
         - Noise around numbers
         - Hard fallbacks
     Returns: integer (e.g. 180) or None.
-    """
+
     
     try:
         # ----------- OCR PREPROCESSING (noise reduction) -----------
@@ -335,12 +335,12 @@ def extract_signatur_from_image(img):
         log_error(f"OCR Signatur extraction failed: {e}")
         return None
 """
-
+"""
 def extract_signatur_counter(filename):
-    """
-    Example filename: hhstaw_519--3_nr_9.pdf  -> returns: 9
-    Fallback: try last integer in filename, else 1
-    """
+   
+    #Example filename: hhstaw_519--3_nr_9.pdf  -> returns: 9
+    #Fallback: try last integer in filename, else 1
+    
     num = re.search(r"_nr_(\d+)", filename, re.IGNORECASE)
     if num:
         return int(num.group(1))
@@ -349,11 +349,24 @@ def extract_signatur_counter(filename):
     if last:
         return int(last[-1])
     return 1
+"""
+def extract_signatur_counter(filename):
+    """
+    Extract all digits from filename and join them into one integer.
+    Example:
+        '23456_76.pdf' -> 2345676
+        '45663_1.pdf'  -> 456631
+    If no digits found, return 1.
+    """
+    digits = re.findall(r"\d+", filename)
+    if digits:
+        return int("".join(digits))
+    return 1
 
 # ------------------------------------------------
 # OUTPUT FOLDER BUILDER
 # ------------------------------------------------
-def build_output_folder(base_name, signatur_number):
+def build_output_folder(signatur_number):
     """
     Build folder:
         /media/cepheus/secure/<root>/<subfolder>/<signatur_number>/
@@ -530,7 +543,7 @@ def split_pdf_on_x(pdf_path, templates):
         else:
             signatur = ocr_signatur
         
-        output_folder = build_output_folder(base_name, signatur)
+        output_folder = build_output_folder(signatur)
         signatur_counter += 1
 
         # Export each page in block individually (progress bar per block)
@@ -574,7 +587,7 @@ def split_pdf_on_x(pdf_path, templates):
     except Exception as e:
         log_error(f"Failed to delete original PDF {pdf_path}: {e}")
 
-    log_message(f"✔ Completed {base_name}\n")
+    log_message(f"Completed {base_name}\n")
 
 # ------------------------------------------------
 # MAIN ENTRY
@@ -626,7 +639,7 @@ def main():
         except Exception as e:
             log_error(f"Unexpected error processing {pdf}: {e}")
 
-    print("✅ All PDFs processed (or logged).")
+    print("All PDFs processed (or logged).")
     log_message("--- Script finished ---\n")
 
 if __name__ == "__main__":
