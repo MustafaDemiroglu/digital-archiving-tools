@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Script Name: split_x_detector.py
-Version: 5.4
+Version: 5.5
 Author: HlaDigiTeam
 Licence: MIT
 Description: This script automatically splits large PDF files into smaller ones 
@@ -148,6 +148,68 @@ def detect_x(pil_image, templates):
 
     return False
 
+def extract_signatur_from_image(img):
+    """
+    Extracts ONLY a 5-digit signatur number (e.g. 00180 → 180).
+    If no 5-digit block exists → returns None.
+    """
+
+    try:
+        # ----------- OCR PREPROCESSING -----------
+        try:
+            import cv2
+            np_img = np.array(img.convert("L"))
+
+            np_img = cv2.equalizeHist(np_img)
+            np_img = cv2.adaptiveThreshold(
+                np_img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY, 31, 15
+            )
+
+            proc_img = Image.fromarray(np_img)
+            raw_text = pytesseract.image_to_string(proc_img, config="--psm 1")
+
+        except Exception:
+            raw_text = pytesseract.image_to_string(img, config="--psm 11")
+
+        if not raw_text:
+            return None
+
+        text = raw_text
+
+        # ----------- BASIC NORMALIZATION -----------
+        text = text.replace("—", "-").replace("–", "-")
+
+        table = str.maketrans({
+            "O": "0", "o": "0",
+            "I": "1", "l": "1",
+        })
+        text = text.translate(table)
+
+        text = re.sub(r"\s+", " ", text).strip()
+
+        # ----------- FIND ALL 5-DIGIT NUMBERS -----------
+        matches = re.findall(r"\b(\d{5})\b", text)
+
+        if not matches:
+            return None
+
+        # take last (most reliable / actual signatur)
+        num = matches[-1].lstrip("0") or "0"
+        num = int(num)
+
+        # sanity check limits
+        if 1 <= num <= 99999:
+            return num
+
+        return None
+
+    except Exception as e:
+        log_error(f"OCR Signatur extraction failed: {e}")
+        return None
+
+
+"""
 # ------------------------------------------------
 # OCR SIGNATUR EXTRACTION
 # ------------------------------------------------
@@ -161,6 +223,7 @@ def extract_signatur_from_image(img):
         - Hard fallbacks
     Returns: integer (e.g. 180) or None.
     """
+    
     try:
         # ----------- OCR PREPROCESSING (noise reduction) -----------
         try:
@@ -177,11 +240,11 @@ def extract_signatur_from_image(img):
             )
 
             proc_img = Image.fromarray(np_img)
-            raw_text = pytesseract.image_to_string(proc_img, config="--psm 6")
+            raw_text = pytesseract.image_to_string(proc_img, config="--psm 1")
 
         except Exception:
             # fallback: raw OCR
-            raw_text = pytesseract.image_to_string(img, config="--psm 6")
+            raw_text = pytesseract.image_to_string(img, config="--psm 11")
 
         if not raw_text:
             return None
@@ -252,16 +315,18 @@ def extract_signatur_from_image(img):
                     num = "0"
                 num = int(num)
 
-                # sanity check: archive signatur cannot be 0 or > 999999
-                if 1 <= num <= 999999:
+                # sanity check: archive signatur cannot be 0 or > 99999
+                if 1 <= num <= 99999:
                     return num
 
-        # final fallback: last number in that line
-        fallback = re.findall(r"\d{2,6}", line)
+        # ----------- STEP 6 – Fallback to extracting numbers directly -----------
+        # If pattern fails, fallback to direct number search (5 digits, 00154 format, etc.)
+        fallback = re.findall(r"\b(\d{5})\b", line)  # Look for 5 digit numbers
         if fallback:
+            # If there is a valid fallback number, return it
             num = fallback[-1].lstrip("0") or "0"
             num = int(num)
-            if 1 <= num <= 999999:
+            if 1 <= num <= 99999:
                 return num
 
         return None
@@ -269,7 +334,7 @@ def extract_signatur_from_image(img):
     except Exception as e:
         log_error(f"OCR Signatur extraction failed: {e}")
         return None
-
+"""
 
 def extract_signatur_counter(filename):
     """
@@ -292,7 +357,9 @@ def build_output_folder(base_name, signatur_number):
     """
     Build folder:
         /media/cepheus/secure/<root>/<subfolder>/<signatur_number>/
+        
     Uses first two underscore-separated parts if possible; otherwise safe defaults.
+    """
     """
     # try to extract two parts using regex for robustness
     m = re.match(r"([^_]+)_([^_]+)", base_name)
@@ -303,10 +370,14 @@ def build_output_folder(base_name, signatur_number):
         parts = base_name.split("_")
         root = parts[0] if len(parts) >= 1 else "unknown_root"
         subfolder = parts[1] if len(parts) >= 2 else "unknown_sub"
-
-    folder = os.path.join("/media/cepheus/ingest/hdd_upload/devisenakten/secure", root, subfolder, str(signatur_number))
-    if os.path.exists(folder):
-        folder = folder + "_undefined"
+    """
+    
+    # /media/cepheus/ingest/hdd_upload/devisenakten/secure/hhstaw/519--3/<signatur_number>/
+    folder = os.path.join("/media/cepheus/ingest/hdd_upload/devisenakten/secure/hhstaw/519--3", str(signatur_number))
+    i = 0
+    while os.path.exists(folder):
+        i += 1
+        folder = folder + "_match_" + str(i)
     os.makedirs(folder, exist_ok=True)
     return folder
 
@@ -468,10 +539,13 @@ def split_pdf_on_x(pdf_path, templates):
             try:
                 img = convert_from_path(pdf_path, first_page=p, last_page=p, dpi=RENDER_DPI, fmt="ppm")[0]
                 # To name the images
-                path_parts = base_name.split("_")
-                root_haus = path_parts[0] if len(path_parts) >= 1 else "unknown_haus"
-                subfolder_bestand = path_parts[1] if len(path_parts) >= 2 else "unknown_bestand"
-              
+                # path_parts = base_name.split("_")
+                # root_haus = path_parts[0] if len(path_parts) >= 1 else "unknown_haus"
+                # subfolder_bestand = path_parts[1] if len(path_parts) >= 2 else "unknown_bestand"
+                
+                root_haus = hhstaw
+                subfolder_bestand = str(519--3)
+                
                 # normalize extension
                 out_ext = OUTPUT_FORMAT.lower()
                 if out_ext == "tiff":
