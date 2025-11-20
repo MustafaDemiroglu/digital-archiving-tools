@@ -556,8 +556,8 @@ def split_pdf_on_x(pdf_path, templates):
                 # root_haus = path_parts[0] if len(path_parts) >= 1 else "unknown_haus"
                 # subfolder_bestand = path_parts[1] if len(path_parts) >= 2 else "unknown_bestand"
                 
-                root_haus = hhstaw
-                subfolder_bestand = str(519--3)
+                root_haus = "hhstaw"
+                subfolder_bestand = "519-3"
                 
                 # normalize extension
                 out_ext = OUTPUT_FORMAT.lower()
