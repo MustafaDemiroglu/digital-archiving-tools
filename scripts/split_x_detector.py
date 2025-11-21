@@ -17,8 +17,6 @@ sudo apt install poppler-utils tesseract-ocr
 This script processes a directory containing PDF files and performs
 the following steps in a RAM-safe and sequential manner:
 
-Pdfs shoud be named in sequence like: hhstaw_519--3_nr_1.pdf, hhstaw_519--3_nr_375.pdf ...
-
 Main Functions:
 1. Detects separator pages containing an “X” mark using OpenCV templates.
 2. Splits the large PDF into smaller PDFs — one split per Signatur block.
@@ -29,7 +27,7 @@ Main Functions:
        → signatur_number = 180
 6. If OCR signatur fails, the signatur number is derived from the PDF filename.
         Example: “filename: hhstaw_519--3_nr_9.pdf”
-       → signatur_number = 9,10,11.....
+       → signatur_number = 51939,51940,51941.....
 7. Each block is stored in:
        /media/cepheus/secure/<root>/<subfolder>/<signatur_number>/
 8. Convert each split PDF’s pages to image files (jpg/tif depending on output).
@@ -148,18 +146,20 @@ def detect_x(pil_image, templates):
 
     return False
 
+# ------------------------------------------------
+# OCR
+# ------------------------------------------------
 def extract_signatur_from_image(img):
     """
-    Extracts ONLY a 5-digit signatur number (e.g. 00180 → 180).
-    If no 5-digit block exists → returns None.
+    Extracts ONLY 5 or 6-digit signatur number (e.g. 00180 → 180, 067816 →  67816).
+    If no valid number block exists → returns None.
     """
-
     try:
         # ----------- OCR PREPROCESSING -----------
         try:
-            import cv2
             np_img = np.array(img.convert("L"))
 
+            # Apply histogram equalization and adaptive thresholding for preprocessing
             np_img = cv2.equalizeHist(np_img)
             np_img = cv2.adaptiveThreshold(
                 np_img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -175,10 +175,8 @@ def extract_signatur_from_image(img):
         if not raw_text:
             return None
 
-        text = raw_text
-
         # ----------- BASIC NORMALIZATION -----------
-        text = text.replace("—", "-").replace("–", "-")
+        text = raw_text.replace("—", "-").replace("–", "-")
 
         table = str.maketrans({
             "O": "0", "o": "0",
@@ -188,9 +186,8 @@ def extract_signatur_from_image(img):
 
         text = re.sub(r"\s+", " ", text).strip()
 
-        # ----------- FIND ALL 5-DIGIT NUMBERS -----------
-        matches = re.findall(r"\b(\d{5})\b", text)
-
+        # ----------- FIND ALL NUMBERS (5 or 6 digits) -----------
+        matches = re.findall(r"\b(\d{5,6})\b", text)
         if not matches:
             return None
 
@@ -199,7 +196,7 @@ def extract_signatur_from_image(img):
         num = int(num)
 
         # sanity check limits
-        if 1 <= num <= 99999:
+        if 1 <= num <= 999999:
             return num
 
         return None
@@ -208,155 +205,13 @@ def extract_signatur_from_image(img):
         log_error(f"OCR Signatur extraction failed: {e}")
         return None
 
-
-"""
 # ------------------------------------------------
-# OCR SIGNATUR EXTRACTION
+# FIND SIGNATUR FROM FILENAME
 # ------------------------------------------------
-def extract_signatur_from_image(img):
-   
-    OCR extractor for 'Signatur: 519/3 – 00180' lines.
-    Handles:
-        - OCR errors (I→1, l→1, O→0, — → -)
-        - Misread 'Signatur' variants
-        - Noise around numbers
-        - Hard fallbacks
-    Returns: integer (e.g. 180) or None.
-
-    
-    try:
-        # ----------- OCR PREPROCESSING (noise reduction) -----------
-        try:
-            import cv2
-            np_img = np.array(img.convert("L"))
-
-            # increase contrast
-            np_img = cv2.equalizeHist(np_img)
-
-            # adaptive threshold (helps with old scans)
-            np_img = cv2.adaptiveThreshold(
-                np_img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                cv2.THRESH_BINARY, 31, 15
-            )
-
-            proc_img = Image.fromarray(np_img)
-            raw_text = pytesseract.image_to_string(proc_img, config="--psm 1")
-
-        except Exception:
-            # fallback: raw OCR
-            raw_text = pytesseract.image_to_string(img, config="--psm 11")
-
-        if not raw_text:
-            return None
-
-        text = raw_text
-
-        # ----------- NORMALIZATION -----------
-        # universal dash normalization
-        text = text.replace("—", "-").replace("–", "-").replace("-", "-")
-
-        # typical OCR confusions
-        table = str.maketrans({
-            "O": "0", "o": "0",
-            "|": "/",
-            "I": "1", "l": "1",
-            "“": "", "”": "", '"': "",
-        })
-        text = text.translate(table)
-
-        # remove hidden unicode noise
-        text = re.sub(r"[\u200b\u200c\u200d]", "", text)
-
-        # collapse whitespace
-        text = re.sub(r"\s+", " ", text).strip()
-
-        # normalize broken slash patterns
-        text = re.sub(r"(\d)\s*[/]\s*(\d)", r"\1/\2", text)
-
-        # normalize broken dash patterns:
-        text = re.sub(r"(\d)\s*-\s*(\d{2,6})", r"\1-\2", text)
-
-
-        # ----------- SIGNATUR LINE ISOLATION -----------
-        # catch lines that contain "Signatur" in any broken OCR form
-        signatur_line = None
-        for line in text.split("\n"):
-            if re.search(r"S[i1l]gnat[ur]+", line, re.IGNORECASE):
-                signatur_line = line.strip()
-                break
-
-        if not signatur_line:
-            return None
-
-
-        # ----------- STEP 4 – cleanup line -----------
-        line = signatur_line
-
-        # Fix common OCR distortions:
-        # e.g. "Slgnatur", "Sıgnatur", "Signatnr"
-        line = re.sub(r"S[i1l]gnat[ur]+", "Signatur", line, flags=re.IGNORECASE)
-
-        # final whitespace collapse
-        line = re.sub(r"\s+", " ", line)
-
-
-        # ----------- STEP 5 – PRIMARY PATTERN -----------
-        patterns = [
-            r"Signatur[: ]*\d+/\d+-?0*([0-9]{1,6})",     # clean pattern
-            r"Signatur[: ]*\d+/\d+\s+([0-9]{1,6})",      # space instead of dash
-            r"Signatur[: ]*\d+[/ ]\d+[- ]+0*([0-9]{1,6})", # messy separators
-        ]
-
-        for p in patterns:
-            m = re.search(p, line, re.IGNORECASE)
-            if m:
-                num = m.group(1).lstrip("0")
-                if num == "":
-                    num = "0"
-                num = int(num)
-
-                # sanity check: archive signatur cannot be 0 or > 99999
-                if 1 <= num <= 99999:
-                    return num
-
-        # ----------- STEP 6 – Fallback to extracting numbers directly -----------
-        # If pattern fails, fallback to direct number search (5 digits, 00154 format, etc.)
-        fallback = re.findall(r"\b(\d{5})\b", line)  # Look for 5 digit numbers
-        if fallback:
-            # If there is a valid fallback number, return it
-            num = fallback[-1].lstrip("0") or "0"
-            num = int(num)
-            if 1 <= num <= 99999:
-                return num
-
-        return None
-
-    except Exception as e:
-        log_error(f"OCR Signatur extraction failed: {e}")
-        return None
-"""
-"""
-def extract_signatur_counter(filename):
-   
-    #Example filename: hhstaw_519--3_nr_9.pdf  -> returns: 9
-    #Fallback: try last integer in filename, else 1
-    
-    num = re.search(r"_nr_(\d+)", filename, re.IGNORECASE)
-    if num:
-        return int(num.group(1))
-    # fallback: last number in filename
-    last = re.findall(r"(\d+)", filename)
-    if last:
-        return int(last[-1])
-    return 1
-"""
 def extract_signatur_counter(filename):
     """
-    Extract all digits from filename and join them into one integer.
-    Example:
-        '23456_76.pdf' -> 2345676
-        '45663_1.pdf'  -> 456631
-    If no digits found, return 1.
+    Extract all digits from filename and join them into one integer. If no digits found, return 1.
+    Example: '23456_76.pdf' -> 2345676
     """
     digits = re.findall(r"\d+", filename)
     if digits:
@@ -368,24 +223,8 @@ def extract_signatur_counter(filename):
 # ------------------------------------------------
 def build_output_folder(signatur_number):
     """
-    Build folder:
-        /media/cepheus/secure/<root>/<subfolder>/<signatur_number>/
-        
-    Uses first two underscore-separated parts if possible; otherwise safe defaults.
-    """
-    """
-    # try to extract two parts using regex for robustness
-    m = re.match(r"([^_]+)_([^_]+)", base_name)
-    if m:
-        root = m.group(1)
-        subfolder = m.group(2)
-    else:
-        parts = base_name.split("_")
-        root = parts[0] if len(parts) >= 1 else "unknown_root"
-        subfolder = parts[1] if len(parts) >= 2 else "unknown_sub"
-    """
-    
-    # /media/cepheus/ingest/hdd_upload/devisenakten/secure/hhstaw/519--3/<signatur_number>/
+    Build folder:/media/cepheus/ingest/hdd_upload/devisenakten/secure/hhstaw/519--3/<signatur_number>/    
+    """  
     folder = os.path.join("/media/cepheus/ingest/hdd_upload/devisenakten/secure/hhstaw/519--3", str(signatur_number))
     i = 0
     while os.path.exists(folder):
@@ -552,10 +391,6 @@ def split_pdf_on_x(pdf_path, templates):
             try:
                 img = convert_from_path(pdf_path, first_page=p, last_page=p, dpi=RENDER_DPI, fmt="ppm")[0]
                 # To name the images
-                # path_parts = base_name.split("_")
-                # root_haus = path_parts[0] if len(path_parts) >= 1 else "unknown_haus"
-                # subfolder_bestand = path_parts[1] if len(path_parts) >= 2 else "unknown_bestand"
-                
                 root_haus = "hhstaw"
                 subfolder_bestand = "519--3"
                 
@@ -565,7 +400,6 @@ def split_pdf_on_x(pdf_path, templates):
                     out_ext = "tif"
                 if out_ext == "jpeg":
                     out_ext = "jpg"
-
 
                 out_name = f"{root_haus}_{subfolder_bestand}_nr_{signatur}_{p-start:04d}.{out_ext}"
                 out_path = os.path.join(output_folder, out_name)
