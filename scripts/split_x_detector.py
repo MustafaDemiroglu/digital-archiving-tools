@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Script Name: split_x_detector.py
-Version: 5.5
+Version: 5.6
 Author: HlaDigiTeam
 Licence: MIT
 Description: This script automatically splits large PDF files into smaller ones 
@@ -13,9 +13,6 @@ sudo apt update
 sudo apt install python3 python3-pip
 pip install opencv-python pdf2image pypdf2 pillow pytesseract tqdm numpy
 sudo apt install poppler-utils tesseract-ocr
-
-This script processes a directory containing PDF files and performs
-the following steps in a RAM-safe and sequential manner:
 
 Main Functions:
 1. Detects separator pages containing an “X” mark using OpenCV templates.
@@ -29,8 +26,8 @@ Main Functions:
         Example: “filename: hhstaw_519--3_nr_9.pdf”
        → signatur_number = 51939,51940,51941.....
 7. Each block is stored in:
-       /media/cepheus/secure/<root>/<subfolder>/<signatur_number>/
-8. Convert each split PDF’s pages to image files (jpg/tif depending on output).
+       /media/cepheus/ingest/hdd_upload/devisenakten/secure/hhstaw/519--3/<signatur_number>/
+8. Convert each split PDF’s pages to image files (jpg/tif depending on output). Default choice ist tif
 9. Move extracted images into the same numbered folder.
 10. Each small PDF is deleted after extraction.
 11. Large PDF is deleted after all blocks are processed.
@@ -59,7 +56,7 @@ import pytesseract
 
 # ---------------- CONFIGURATION ----------------
 TEMPLATE_DIR = "/media/cepheus/ingest/testcharts_bestandsblatt/x_templates/"
-LOG_DIR = "logs"
+LOG_DIR = "logs_split_x_detector"
 THRESHOLD = 0.55          # template match threshold
 SCALES = [0.5, 0.75, 1.0, 1.25]
 
@@ -147,63 +144,69 @@ def detect_x(pil_image, templates):
     return False
 
 # ------------------------------------------------
-# OCR
+# OCR with TESSARACT to find SIGNATUR
 # ------------------------------------------------
 def extract_signatur_from_image(img):
     """
-    Extracts ONLY 5 or 6-digit signatur number (e.g. 00180 → 180, 067816 →  67816).
-    If no valid number block exists → returns None.
+    1 - Finds Signatur block (e.g. "Signatur: 519/3 01054" → 1054)
+    2 - Finds "519/3 01044" pattern (→ 1044)
+    3 - Fallback: Extracts any 5–6 digit number in text.
+        (00180 → 180, 067816 → 67816)
+    If nothing valid found → returns None
     """
-    try:
-        # ----------- OCR PREPROCESSING -----------
+    
+    def clean_number(s):
+        """Convert '00123' → 123 . If not valid → None"""
+        if not s:
+            return None
+        s = s.lstrip("0") or "0"
+        return int(s) if s.isdigit() else None
+    
+     def try_extract_from_text(text):
+        if not text:
+            return None
+
+        # Normalize
+        t = text.replace("—", "-").replace("–", "-").replace("\xa0", " ")
+
+        # 1) Find `Signatur:` block
+        m = re.search(r"Signatur[:\s]+[^\n]*?(\d{5,6})", t, re.IGNORECASE)
+        if m:
+            num = clean_number(m.group(1))
+            if num and 1 <= num <= 99999:
+                return num
+
+        # 2) Find `519/3 01044` pattern
+        m = re.search(r"\b\d+/\d+\s+(\d{5,6})\b", t)
+        if m:
+            num = clean_number(m.group(1))
+            if num and 1 <= num <= 99999:
+                return num
+
+        # 3) Fallback: Try all 5–6 digit numbers
+        matches = re.findall(r"\b(\d{5,6})\b", t)
+        if matches:
+            for raw in matches:
+                num = clean_number(raw)
+                if num and 1 <= num <= 99999:
+                    return num
+
+        return None
+
+    # Try OCR with PSMs in order
+    psm_list = ["--psm 1", "--psm 3", "--psm 11"]
+
+    for psm in psm_list:
         try:
-            np_img = np.array(img.convert("L"))
+            txt = pytesseract.image_to_string(img, config=psm)
+            sign = try_extract_from_text(txt)
+            if sign is not None:
+                return sign
+        except Exception as e:
+            log_error(f"OCR Signatur extraction failed: {e}")
+            continue
 
-            # Apply histogram equalization and adaptive thresholding for preprocessing
-            np_img = cv2.equalizeHist(np_img)
-            np_img = cv2.adaptiveThreshold(
-                np_img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                cv2.THRESH_BINARY, 31, 15
-            )
-
-            proc_img = Image.fromarray(np_img)
-            raw_text = pytesseract.image_to_string(proc_img, config="--psm 1")
-
-        except Exception:
-            raw_text = pytesseract.image_to_string(img, config="--psm 11")
-
-        if not raw_text:
-            return None
-
-        # ----------- BASIC NORMALIZATION -----------
-        text = raw_text.replace("—", "-").replace("–", "-")
-
-        table = str.maketrans({
-            "O": "0", "o": "0",
-            "I": "1", "l": "1",
-        })
-        text = text.translate(table)
-
-        text = re.sub(r"\s+", " ", text).strip()
-
-        # ----------- FIND ALL NUMBERS (5 or 6 digits) -----------
-        matches = re.findall(r"\b(\d{5,6})\b", text)
-        if not matches:
-            return None
-
-        # take last (most reliable / actual signatur)
-        num = matches[-1].lstrip("0") or "0"
-        num = int(num)
-
-        # sanity check limits
-        if 1 <= num <= 999999:
-            return num
-
-        return None
-
-    except Exception as e:
-        log_error(f"OCR Signatur extraction failed: {e}")
-        return None
+    return None
 
 # ------------------------------------------------
 # FIND SIGNATUR FROM FILENAME
@@ -379,11 +382,14 @@ def split_pdf_on_x(pdf_path, templates):
 
         if ocr_signatur is None:
             signatur = signatur_counter
+            prefix = "_fn"
+            signatur_counter += 1
+
         else:
             signatur = ocr_signatur
+            prefix = ""
         
-        output_folder = build_output_folder(signatur)
-        signatur_counter += 1
+        output_folder = build_output_folder(f"{signatur}{prefix}")
 
         # Export each page in block individually (progress bar per block)
         page_range = range(start + 1, end + 1)  # convert_from_path uses 1-based pages
