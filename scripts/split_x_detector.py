@@ -148,21 +148,19 @@ def detect_x(pil_image, templates):
 # ------------------------------------------------
 def extract_signatur_from_image(img):
     """
-    1 - Finds Signatur block (e.g. "Signatur: 519/3 01054" → 1054)
-    2 - Finds "519/3 01044" pattern (→ 1044)
-    3 - Fallback: Extracts any 5–6 digit number in text.
-        (00180 → 180, 067816 → 67816)
-    If nothing valid found → returns None
+    1 - Finds Signatur block
+    2 - Finds '519/3 01044' pattern
+    3 - Finds any 5–6 digit number
     """
     
     def clean_number(s):
-        """Convert '00123' → 123 . If not valid → None"""
+        """Convert '00123' → 123"""
         if not s:
             return None
         s = s.lstrip("0") or "0"
         return int(s) if s.isdigit() else None
-    
-     def try_extract_from_text(text):
+
+    def try_extract_from_text(text):
         if not text:
             return None
 
@@ -176,24 +174,23 @@ def extract_signatur_from_image(img):
             if num and 1 <= num <= 99999:
                 return num
 
-        # 2) Find `519/3 01044` pattern
+        # 2) Find patterns like "519/3 01044"
         m = re.search(r"\b\d+/\d+\s+(\d{5,6})\b", t)
         if m:
             num = clean_number(m.group(1))
             if num and 1 <= num <= 99999:
                 return num
 
-        # 3) Fallback: Try all 5–6 digit numbers
+        # 3) Fallback: any 5–6 digit number
         matches = re.findall(r"\b(\d{5,6})\b", t)
-        if matches:
-            for raw in matches:
-                num = clean_number(raw)
-                if num and 1 <= num <= 99999:
-                    return num
+        for raw in matches:
+            num = clean_number(raw)
+            if num and 1 <= num <= 99999:
+                return num
 
         return None
 
-    # Try OCR with PSMs in order
+    # Try OCR with several PSM modes
     psm_list = ["--psm 1", "--psm 3", "--psm 11"]
 
     for psm in psm_list:
@@ -204,7 +201,6 @@ def extract_signatur_from_image(img):
                 return sign
         except Exception as e:
             log_error(f"OCR Signatur extraction failed: {e}")
-            continue
 
     return None
 
