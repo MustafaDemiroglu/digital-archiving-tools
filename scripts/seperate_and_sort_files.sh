@@ -43,7 +43,7 @@ COUNTER=$START_NUMBER
 for FILE in $FILES_TO_MOVE; do
     NEW_FILE="${TARGET_FOLDER}/hhstaw_519--3_nr_${TARGET_FOLDER}_$(printf "%04d" $COUNTER).tif"
     mv "$FILE" "$NEW_FILE"
-    COUNTER=$((10#$COUNTER + 1))   # Increase 4-digit counter
+    COUNTER=$(printf "%04d" $((COUNTER + 1)))
 done
 
 echo "File move and renaming completed successfully!"
