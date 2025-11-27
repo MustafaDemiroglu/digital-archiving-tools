@@ -1,48 +1,50 @@
 #!/bin/bash
 
-# This script moves and renames files from a source folder to a target folder.
-# It checks if the source and target folders exist, and then moves files
-# from the source folder starting from a given file number.
-# The files will be renamed in the target folder with the new signature number.
-
-# Get source folder, target folder, and starting file number from the arguments
 SOURCE_FOLDER=$1
 TARGET_FOLDER=$2
 START_NUMBER=$3
 
-# Check if the source folder exists
+# Make START_NUMBER 4 digits
+START_NUMBER=$(printf "%04d" $START_NUMBER)
+
+# Check if source folder exists
 if [ ! -d "$SOURCE_FOLDER" ]; then
     echo "Error: Source folder ($SOURCE_FOLDER) does not exist."
     exit 1
 fi
 
-# Check if the target folder exists
+# Check target folder
 if [ -d "$TARGET_FOLDER" ]; then
-    echo "Error: Target folder ($TARGET_FOLDER) already exists."
-    exit 1
+    # Folder exists but is it empty?
+    if [ "$(ls -A "$TARGET_FOLDER")" ]; then
+        echo "Error: Target folder ($TARGET_FOLDER) already exists and is not empty."
+        exit 1
+    else
+        echo "Target folder exists and is empty. Using it."
+    fi
 else
-    mkdir "$TARGET_FOLDER"  # If the target folder doesn't exist, create it
+    mkdir "$TARGET_FOLDER"
 fi
 
-# Get the list of files in the source folder and sort them
+# List files
 FILES=$(ls ${SOURCE_FOLDER}/hhstaw_519--3_nr_${SOURCE_FOLDER}_*.tif | sort)
 
-# Select the files starting from the specified number
-FILES_TO_MOVE=$(echo "$FILES" | grep -E "_${START_NUMBER}.tif" | sort)
+# Select files starting from START_NUMBER
+FILES_TO_MOVE=$(echo "$FILES" | while read FILE; do
+    NUM=$(echo "$FILE" | sed -E 's/.*_([0-9]{4})\.tif/\1/')
+    if [ "$NUM" -ge "$START_NUMBER" ]; then
+        echo "$FILE"
+    fi
+done)
 
-# Move and rename files
-COUNTER=1  # Start the file number from 1
+COUNTER=$START_NUMBER
+
+# Move and rename all selected files
 for FILE in $FILES_TO_MOVE; do
-    # Create the new filename with the correct sequence number
     NEW_FILE="${TARGET_FOLDER}/hhstaw_519--3_nr_${TARGET_FOLDER}_$(printf "%04d" $COUNTER).tif"
-
-    # Move the file to the target folder
     mv "$FILE" "$NEW_FILE"
-
-    COUNTER=$((COUNTER + 1))  # Increment the counter for the next file
+    COUNTER=$((10#$COUNTER + 1))   # Increase 4-digit counter
 done
 
-# Print success message after all files have been moved and renamed
 echo "File move and renaming completed successfully!"
-
 exit 0
