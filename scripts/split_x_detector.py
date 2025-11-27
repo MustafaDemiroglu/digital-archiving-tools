@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
 """
 Script Name: split_x_detector.py
 Version: 5.6
@@ -7,7 +8,7 @@ Author: HlaDigiTeam
 Licence: MIT
 Description: This script automatically splits large PDF files into smaller ones 
 based on pages that contain a visible 'X' separator mark.
-
+  
 This Script needs: python3 python3-pip poppler-utils tesseract-ocr opencv-python pdf2image pypdf2 pillow pytesseract tqdm numpy
 sudo apt update
 sudo apt install python3 python3-pip
@@ -38,6 +39,9 @@ Usage:
     python3 split_x_detector.py /path/to/pdf_directory/
     
 If the path argument or templates is missing or invalid, the script will log the error and exit.
+
+### (P.S. for DigiTem)This Script should be manuell used in Kitodo-vm
+
 """
 
 import os
