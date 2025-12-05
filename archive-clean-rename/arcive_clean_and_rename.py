@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 archive_clean_and_rename.py
-version: 2.2
+version: 2.3
 Author: Mustafa Demiroglu
 
 Simple, safe, cross-platform script to:
@@ -186,7 +186,20 @@ def rename_directories_safe(root: Path, log_path: Path, dry: bool, progress, gen
 
 
 # ==============================
-# FILE PROCESSING WITH CORRECT PROGRESS BARS
+# HELPER: count recursive allowed files under a directory
+# ==============================
+def count_allowed_files_recursive(path: Path) -> int:
+    if not path.exists() or not path.is_dir():
+        return 0
+    cnt = 0
+    for p in path.rglob("*"):
+        if p.is_file() and p.suffix.lower() in ALLOWED_EXTS:
+            cnt += 1
+    return cnt
+
+
+# ==============================
+# FILE PROCESSING
 # ==============================
 def process_files_in_leaf_dirs(root: Path, tmp_root: Path, log_path: Path,
                                dry: bool, progress, general_task):
@@ -208,10 +221,18 @@ def process_files_in_leaf_dirs(root: Path, tmp_root: Path, log_path: Path,
 
         files_sorted = sorted(files, key=natural_key)
 
-        # Correct progress totals
-        archive_total = max(len(files_sorted), 1)
-        bestand_total = max(len(files_sorted), 1)
+        # Correct progress totals using recursive counts
+        # archive_dir corresponds to the 'grandfather' folder under root
+        archive_dir = root / grandfather
+        bestand_dir = archive_dir / father
+
+        archive_total = count_allowed_files_recursive(archive_dir)
+        bestand_total = count_allowed_files_recursive(bestand_dir)
         signatur_total = len(files_sorted)
+
+        # Ensure minimums so progress bar behaves
+        archive_total = max(archive_total, 1)
+        bestand_total = max(bestand_total, 1)
 
         archive_task = progress.add_task(f"[cyan]{grandfather}", total=archive_total)
         bestand_task = progress.add_task(f"[green]{father}", total=bestand_total)
@@ -335,8 +356,11 @@ def main():
         tmp_root = root / f"{TMP_DIR_PREFIX}{os.getpid()}"
         tmp_root.mkdir(exist_ok=False)
 
-    # Count general items
-    total_items = sum(1 for _ in root.rglob("*"))
+    # Build GENERAL total as sum of files + dirs so directory renaming advances fit
+    total_dirs = sum(1 for _ in root.rglob("*") if _.is_dir())
+    total_files = sum(1 for _ in root.rglob("*") if _.is_file() and _.suffix.lower() in ALLOWED_EXTS)
+    total_items = total_dirs + total_files
+    total_items = max(total_items, 1)
 
     # PROGRESS UI
     with Progress(
