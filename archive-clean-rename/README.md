@@ -30,8 +30,6 @@ grandfather_father_nr_root_0001.ext
 grandfather_father_nr_root_0002.ext
 ...
 
-
-
 Missing parent folders are replaced with `x`.
 
 Supports extensions:
@@ -58,7 +56,6 @@ Perfect for verifying before running in production.
 A log file is created under the chosen root directory:
 archive_rename_log_YYYYMMDD_HHMMSS.log
 
-
 Includes actions, warnings, and errors.
 
 ### ✔ Safety  
@@ -73,11 +70,12 @@ Includes actions, warnings, and errors.
 
 This script requires **Python 3.6+**.
 
-Clone the repository:
+## Clone the repository:
 
 ```bash
 git clone https://github.com/Mustafa.Demiroglu/archive-clean-rename.git
 cd archive-clean-rename
+```
 
 ## Usage
 ### Dry-run (recommended first):
