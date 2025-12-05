@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 archive_clean_and_rename.py
-version: 2.1
+version: 2.2
 Author: Mustafa Demiroglu
 
 Simple, safe, cross-platform script to:
@@ -48,9 +48,9 @@ import unicodedata
 
 from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 
-# --------------------------
-# CONFIGURATION
-# --------------------------
+# ==============================
+# CONFIG
+# ==============================
 ALLOWED_EXTS = {'.tif', '.tiff', '.jpg', '.jpeg', '.png', '.pdf'}
 MAX_RELATIVE_DEPTH = 4
 
@@ -60,16 +60,18 @@ LOG_PREFIX = "archive_rename_log_"
 _ALLOWED_NAME_RE = re.compile(r'[^a-z0-9._-]')
 
 
-# --------------------------
+# ==============================
 # UTILS
-# --------------------------
+# ==============================
 def nowstr(fmt="%Y%m%d_%H%M%S"):
     return datetime.now().strftime(fmt)
 
-def write_log(log_path: Path, line: str, dry: bool = False):
+
+def write_log(log_path: Path, line: str, dry=False):
     prefix = "DRY: " if dry else ""
     with log_path.open("a", encoding="utf-8") as f:
         f.write(f"{datetime.now().isoformat()}  {prefix}{line}\n")
+
 
 def natural_key(s: str):
     parts = re.split(r'(\d+)', s)
@@ -78,8 +80,9 @@ def natural_key(s: str):
         out.append(int(p) if p.isdigit() else p.lower())
     return out
 
+
 def sanitize_name(name: str) -> str:
-    """HLA rules + Abir's leading zero removal."""
+    """HLA rules + leading zero removal"""
     original = name
     name = unicodedata.normalize('NFKD', name)
     name = name.lower()
@@ -91,14 +94,12 @@ def sanitize_name(name: str) -> str:
     name = name.replace(',', '')
 
     name = _ALLOWED_NAME_RE.sub('', name)
-
     name = re.sub(r'[_]{2,}', '_', name)
     name = re.sub(r'[.]{2,}', '..', name)
     name = re.sub(r'[-]{2,}', '--', name)
 
     name = name.strip('._-')
 
-    # Leading zero removal ONLY if the result is purely numeric
     if name.isdigit():
         try:
             name = str(int(name))
@@ -106,6 +107,7 @@ def sanitize_name(name: str) -> str:
             pass
 
     return name if name else 'x'
+
 
 def unique_path(target: Path) -> Path:
     if not target.exists():
@@ -120,9 +122,9 @@ def unique_path(target: Path) -> Path:
         i += 1
 
 
-# --------------------------
+# ==============================
 # DEPTH CHECK
-# --------------------------
+# ==============================
 def check_max_relative_depth(root: Path, log_path: Path) -> bool:
     max_depth = 0
     for p in root.rglob("*"):
@@ -134,16 +136,16 @@ def check_max_relative_depth(root: Path, log_path: Path) -> bool:
     return max_depth <= MAX_RELATIVE_DEPTH
 
 
-# --------------------------
+# ==============================
 # DIRECTORY RENAME
-# --------------------------
+# ==============================
 def gather_dirs_by_depth(root: Path):
     dirs = [p for p in root.rglob("*") if p.is_dir()]
     dirs.append(root)
     return sorted(dirs, key=lambda p: len(p.relative_to(root).parts), reverse=True)
 
 
-def rename_directories_safe(root: Path, log_path: Path, dry: bool, progress: Progress, general_task):
+def rename_directories_safe(root: Path, log_path: Path, dry: bool, progress, general_task):
     renames = []
     dirs = gather_dirs_by_depth(root)
 
@@ -171,7 +173,6 @@ def rename_directories_safe(root: Path, log_path: Path, dry: bool, progress: Pro
             renames.append((d, new_path))
         except Exception as ex:
             write_log(log_path, f"ERROR_RENAMING_DIR: {d} -> {new_path}: {ex}")
-            # rollback
             for old, new in reversed(renames):
                 try:
                     if new.exists():
@@ -184,18 +185,12 @@ def rename_directories_safe(root: Path, log_path: Path, dry: bool, progress: Pro
     return renames
 
 
-# --------------------------
-# FILE PROCESSING WITH DYNAMIC PROGRESS BARS
-# --------------------------
-def process_files_in_leaf_dirs(root: Path, tmp_root: Path, log_path: Path, dry: bool,
-                               progress: Progress, general_task):
-    """
-    Only 4 progress bars shown:
-        GENERAL (already created)
-        ARCHIVE  (root folder inside main root)
-        BESTAND
-        SIGNATUR
-    """
+# ==============================
+# FILE PROCESSING WITH CORRECT PROGRESS BARS
+# ==============================
+def process_files_in_leaf_dirs(root: Path, tmp_root: Path, log_path: Path,
+                               dry: bool, progress, general_task):
+
     for dirpath, dirnames, filenames in os.walk(root):
         dirp = Path(dirpath)
 
@@ -206,23 +201,22 @@ def process_files_in_leaf_dirs(root: Path, tmp_root: Path, log_path: Path, dry: 
         if not files:
             continue
 
-        # Identify ancestors
+        # Identify names
         rootname = sanitize_name(dirp.name)
         father = sanitize_name(dirp.parent.name) if dirp.parent else 'x'
         grandfather = sanitize_name(dirp.parent.parent.name) if dirp.parent and dirp.parent.parent else 'x'
 
-        # Setup dynamic bars
-        archive_task = progress.add_task(f"[cyan]{grandfather}", total=1)
-        bestand_task = progress.add_task(f"[green]{father}", total=1)
-        signatur_task = progress.add_task(f"[yellow]{rootname}", total=len(files))
-
         files_sorted = sorted(files, key=natural_key)
 
-        # Update ancestor progress once (they do not count items, only mark 'active')
-        progress.update(archive_task, completed=1)
-        progress.update(bestand_task, completed=1)
+        # Correct progress totals
+        archive_total = max(len(files_sorted), 1)
+        bestand_total = max(len(files_sorted), 1)
+        signatur_total = len(files_sorted)
 
-        # Prepare tmp
+        archive_task = progress.add_task(f"[cyan]{grandfather}", total=archive_total)
+        bestand_task = progress.add_task(f"[green]{father}", total=bestand_total)
+        signatur_task = progress.add_task(f"[yellow]{rootname}", total=signatur_total)
+
         tmp_sub = tmp_root / "_files_" / dirp.relative_to(root)
 
         if dry:
@@ -235,6 +229,8 @@ def process_files_in_leaf_dirs(root: Path, tmp_root: Path, log_path: Path, dry: 
 
         for fname in files_sorted:
             progress.advance(general_task)
+            progress.advance(archive_task)
+            progress.advance(bestand_task)
             progress.advance(signatur_task)
 
             old_path = dirp / fname
@@ -260,7 +256,7 @@ def process_files_in_leaf_dirs(root: Path, tmp_root: Path, log_path: Path, dry: 
 
             seq += 1
 
-        # Final move
+        # Final rename
         for old_path, tmp_file in mappings:
             final_target = old_path.parent / tmp_file.name
 
@@ -268,20 +264,21 @@ def process_files_in_leaf_dirs(root: Path, tmp_root: Path, log_path: Path, dry: 
                 write_log(log_path, f"Would move {tmp_file} -> {final_target}", dry=True)
                 continue
 
-            try:
-                if final_target.exists():
+            if old_path.exists():
+                try:
+                    old_path.unlink()
+                except:
+                    pass
+
+            if final_target.exists():
+                try:
+                    final_target.unlink()
+                except:
                     final_target = unique_path(final_target)
 
+            try:
                 tmp_file.replace(final_target)
-
-                if old_path.exists():
-                    try:
-                        old_path.unlink()
-                    except:
-                        pass
-
                 write_log(log_path, f"RENAMED_FILE: {old_path} -> {final_target}")
-
             except Exception as ex:
                 write_log(log_path, f"ERROR_MOVE: {tmp_file}: {ex}")
 
@@ -293,15 +290,14 @@ def process_files_in_leaf_dirs(root: Path, tmp_root: Path, log_path: Path, dry: 
             except:
                 pass
 
-        # Remove dynamic bars
         progress.remove_task(archive_task)
         progress.remove_task(bestand_task)
         progress.remove_task(signatur_task)
 
 
-# --------------------------
+# ==============================
 # MAIN
-# --------------------------
+# ==============================
 def main():
     parser = argparse.ArgumentParser(description="HLA archival rename tool.")
     parser.add_argument("root", nargs="?", help="Root folder")
@@ -323,7 +319,7 @@ def main():
         print("Invalid path.")
         return
 
-    # Log file
+    # Log
     log_path = root / f"{LOG_PREFIX}{nowstr()}.log"
     write_log(log_path, f"START root={root} dry={dry}")
 
@@ -339,9 +335,10 @@ def main():
         tmp_root = root / f"{TMP_DIR_PREFIX}{os.getpid()}"
         tmp_root.mkdir(exist_ok=False)
 
-    # -------------------------------
-    # PROGRESS SYSTEM STARTS HERE
-    # -------------------------------
+    # Count general items
+    total_items = sum(1 for _ in root.rglob("*"))
+
+    # PROGRESS UI
     with Progress(
         TextColumn("[bold blue]{task.description}"),
         BarColumn(),
@@ -349,19 +346,28 @@ def main():
         TimeRemainingColumn(),
     ) as progress:
 
-        # Count total items for general bar
-        total_items = sum(1 for _ in root.rglob("*"))
         general_task = progress.add_task("[white]GENERAL", total=total_items)
 
-        # 1) Rename directories
         rename_directories_safe(root, log_path, dry, progress, general_task)
-
-        # 2) Process files
         process_files_in_leaf_dirs(root, tmp_root, log_path, dry, progress, general_task)
 
-    # Cleanup tmp
+    # Clean tmp
     if not dry:
-        shutil.rmtree(tmp_root)
+        try:
+            shutil.rmtree(tmp_root)
+        except:
+            for p in sorted(tmp_root.rglob("*"), reverse=True):
+                try:
+                    if p.is_file():
+                        p.unlink()
+                    else:
+                        p.rmdir()
+                except:
+                    pass
+            try:
+                tmp_root.rmdir()
+            except:
+                pass
 
     write_log(log_path, "FINISHED")
     print(f"Done. Log: {log_path}")
@@ -369,4 +375,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
