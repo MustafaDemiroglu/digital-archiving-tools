@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
 archive_clean_and_rename.py
+version: 1. 0
+Author: Mustafa Demiroglu
 
 Simple, safe, cross-platform script to:
   1. Fix folder names according to HLA “Benennungsrichtlinie”
@@ -17,11 +19,18 @@ Usage:
 Arguments:
     -n, --dry-run    simulate all actions; do NOT modify anything
 
-Safety:
+Notes / safety:
     - Does NOT rename the root directory
     - If any file is deeper than MAX_RELATIVE_DEPTH under root → abort
     - Temporary directory is created under root (except in DRY-RUN)
     - Folder rename rollback is attempted only when not in dry-run
+    - Allowed file extensions: .tif, .tiff, .jpg, .jpeg, .png, .pdf (case-insensitive)
+    - If any file under the target root has relative directory depth > 4, the script aborts.
+    - Temporary folder '._tmp_archive_renamer_<pid>' is created inside the root and removed at end.
+    - Commas (',') are removed from names (per your specification).
+    - All other disallowed characters are removed.
+    - If a fatal error happens during folder renaming, the script tries to rollback changes.
+
 """
 
 import argparse
