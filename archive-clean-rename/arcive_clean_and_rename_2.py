@@ -1,0 +1,344 @@
+#!/usr/bin/env python3
+"""
+archive_clean_and_rename.py
+
+Simple, safe, cross-platform script to:
+  1. Fix folder names according to HLA “Benennungsrichtlinie”
+  2. Then rename image/pdf files in the leaf folders using:
+        grandfather_father_nr_root_0001.ext
+  3. Log all actions
+  4. Support DRY-RUN mode to simulate everything without making changes
+
+Usage:
+    python3 archive_clean_and_rename.py /path/to/root
+    python3 archive_clean_and_rename.py -n /path/to/root
+    python3 archive_clean_and_rename.py        # asks to use current directory
+
+Arguments:
+    -n, --dry-run    simulate all actions; do NOT modify anything
+
+Safety:
+    - Does NOT rename the root directory
+    - If any file is deeper than MAX_RELATIVE_DEPTH under root → abort
+    - Temporary directory is created under root (except in DRY-RUN)
+    - Folder rename rollback is attempted only when not in dry-run
+"""
+
+import argparse
+import sys
+import os
+import shutil
+import re
+from pathlib import Path
+from datetime import datetime
+import tempfile
+import unicodedata
+
+# --------------------------
+# CONFIGURATION
+# --------------------------
+ALLOWED_EXTS = {'.tif', '.tiff', '.jpg', '.jpeg', '.png', '.pdf'}
+MAX_RELATIVE_DEPTH = 4
+
+TMP_DIR_PREFIX = "._tmp_archive_renamer_"
+LOG_PREFIX = "archive_rename_log_"
+
+_ALLOWED_NAME_RE = re.compile(r'[^a-z0-9._-]')  # allowed chars after sanitizing
+
+
+# --------------------------
+# UTILS
+# --------------------------
+def nowstr(fmt="%Y%m%d_%H%M%S"):
+    return datetime.now().strftime(fmt)
+
+
+def write_log(log_path: Path, line: str, dry: bool = False):
+    """Write a line to the log file"""
+    with log_path.open("a", encoding="utf-8") as f:
+        prefix = "DRY: " if dry else ""
+        f.write(f"{datetime.now().isoformat()}  {prefix}{line}\n")
+
+
+def natural_key(s: str):
+    """Natural sort key so that 2 < 10 < 111"""
+    parts = re.split(r'(\d+)', s)
+    key = []
+    for p in parts:
+        if p.isdigit():
+            key.append(int(p))
+        else:
+            key.append(p.lower())
+    return key
+
+
+def sanitize_name(name: str) -> str:
+    """Apply HLA style folder/file name sanitization rules"""
+    name = unicodedata.normalize('NFKD', name)
+    name = name.lower()
+
+    name = name.replace('ä', 'ae').replace('ö', 'oe').replace('ü', 'ue').replace('ß', 'ss')
+    name = name.replace('/', '--')
+    name = name.replace('+', '..')
+    name = re.sub(r'\s+', '_', name)
+    name = name.replace(',', '')  # remove comma entirely
+
+    name = _ALLOWED_NAME_RE.sub('', name)
+
+    name = re.sub(r'[_]{2,}', '_', name)
+    name = re.sub(r'[.]{2,}', '..', name)
+    name = re.sub(r'[-]{2,}', '--', name)
+
+    name = name.strip('._-')
+
+    return name if name else 'x'
+
+
+def unique_path(target: Path) -> Path:
+    """Ensure target path does not already exist"""
+    if not target.exists():
+        return target
+    base = target.stem
+    ext = target.suffix
+    parent = target.parent
+    i = 1
+    while True:
+        candidate = parent / f"{base}_dup{i}{ext}"
+        if not candidate.exists():
+            return candidate
+        i += 1
+
+
+# --------------------------
+# DEPTH CHECK
+# --------------------------
+def check_max_relative_depth(root: Path, log_path: Path) -> bool:
+    max_found = 0
+    for p in root.rglob('*'):
+        if p.is_file():
+            rel = p.parent.relative_to(root)
+            depth = len(rel.parts)
+            max_found = max(max_found, depth)
+
+    write_log(log_path, f"Max depth found = {max_found}")
+
+    if max_found > MAX_RELATIVE_DEPTH:
+        write_log(log_path, f"ABORT: depth {max_found} > allowed {MAX_RELATIVE_DEPTH}")
+        return False
+    return True
+
+
+# --------------------------
+# DIRECTORY RENAME
+# --------------------------
+def gather_dirs_by_depth(root: Path):
+    dirs = [p for p in root.rglob('*') if p.is_dir()]
+    dirs.append(root)
+    dirs_sorted = sorted(dirs, key=lambda p: len(p.relative_to(root).parts), reverse=True)
+    return dirs_sorted
+
+
+def rename_directories_safe(root: Path, log_path: Path, dry: bool):
+    renames = []
+    dirs = gather_dirs_by_depth(root)
+
+    for d in dirs:
+        if d == root:
+            continue
+
+        new_name = sanitize_name(d.name)
+        if new_name == d.name:
+            continue
+
+        new_path = d.parent / new_name
+        if new_path.exists() and not dry:
+            if not new_path.samefile(d):
+                new_path = unique_path(new_path)
+
+        if dry:
+            write_log(log_path, f"Would rename dir: {d} -> {new_path}", dry=True)
+            continue
+
+        try:
+            d.rename(new_path)
+            write_log(log_path, f"RENAMED_DIR: {d} -> {new_path}")
+            renames.append((d, new_path))
+        except Exception as ex:
+            write_log(log_path, f"ERROR_RENAMING_DIR: {d} -> {new_path}: {ex}")
+
+            # rollback
+            for old, new in reversed(renames):
+                try:
+                    if new.exists():
+                        new.rename(old)
+                        write_log(log_path, f"ROLLBACK: {new} -> {old}")
+                except Exception as rb:
+                    write_log(log_path, f"ERROR_ROLLBACK: {rb}")
+            raise
+
+    return renames
+
+
+# --------------------------
+# FILE PROCESSING
+# --------------------------
+def process_files_in_leaf_dirs(root: Path, tmp_root: Path, log_path: Path, dry: bool):
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirp = Path(dirpath)
+
+        if tmp_root in dirp.parents:
+            continue
+
+        files = [f for f in filenames if Path(f).suffix.lower() in ALLOWED_EXTS]
+        if not files:
+            continue
+
+        files_sorted = sorted(files, key=natural_key)
+
+        # ancestor extraction
+        rootname = sanitize_name(dirp.name) or 'x'
+        father = sanitize_name(dirp.parent.name) if dirp.parent else 'x'
+        grandfather = sanitize_name(dirp.parent.parent.name) if dirp.parent and dirp.parent.parent else 'x'
+
+        # prepare temp subfolder
+        tmp_sub = tmp_root / "_files_" / dirp.relative_to(root)
+
+        if dry:
+            write_log(log_path, f"Would create tmp folder: {tmp_sub}", dry=True)
+        else:
+            tmp_sub.mkdir(parents=True, exist_ok=True)
+            write_log(log_path, f"TMP_DIR_CREATED: {tmp_sub}")
+
+        mappings = []
+        seq = 1
+
+        for fname in files_sorted:
+            old_path = dirp / fname
+            ext = old_path.suffix.lower()
+            new_base = f"{grandfather}_{father}_nr_{rootname}_{seq:04d}"
+
+            new_name = sanitize_name(new_base) + ext
+            tmp_target = tmp_sub / new_name
+
+            if dry:
+                write_log(log_path, f"Would copy {old_path} -> {tmp_target}", dry=True)
+                mappings.append((old_path, tmp_target))
+                seq += 1
+                continue
+
+            # real operation
+            try:
+                tmp_target_u = unique_path(tmp_target)
+                shutil.copy2(old_path, tmp_target_u)
+                write_log(log_path, f"COPIED_TO_TMP: {old_path} -> {tmp_target_u}")
+                mappings.append((old_path, tmp_target_u))
+            except Exception as ex:
+                write_log(log_path, f"ERROR_COPY: {old_path}: {ex}")
+
+            seq += 1
+
+        # finalize names
+        for old_path, tmp_file in mappings:
+            final_target = old_path.parent / tmp_file.name
+
+            if dry:
+                write_log(log_path, f"Would move TMP -> final: {tmp_file} -> {final_target}", dry=True)
+                continue
+
+            try:
+                if final_target.exists():
+                    final_target = unique_path(final_target)
+
+                tmp_file.replace(final_target)
+
+                if old_path.exists():
+                    try:
+                        old_path.unlink()
+                        write_log(log_path, f"REMOVED_OLD: {old_path}")
+                    except Exception as exrm:
+                        write_log(log_path, f"WARNING_REMOVE_OLD: {old_path}: {exrm}")
+
+                write_log(log_path, f"RENAMED_FILE: {tmp_file} -> {final_target}")
+
+            except Exception as ex:
+                write_log(log_path, f"ERROR_MOVE_FINAL: {tmp_file}: {ex}")
+
+        # remove tmp_sub if empty
+        if not dry:
+            try:
+                if tmp_sub.exists() and not any(tmp_sub.iterdir()):
+                    tmp_sub.rmdir()
+            except Exception:
+                pass
+
+
+# --------------------------
+# MAIN
+# --------------------------
+def main():
+    parser = argparse.ArgumentParser(description="Fix folder names and rename files according to HLA rules.")
+    parser.add_argument("root", nargs="?", help="Root folder")
+    parser.add_argument("-n", "--dry-run", action="store_true", help="Simulate actions without modifying anything")
+    args = parser.parse_args()
+
+    dry = args.dry_run
+
+    if args.root:
+        root = Path(args.root).expanduser().resolve()
+    else:
+        cwd = Path.cwd()
+        ans = input(f"No path given. Run in current directory '{cwd}'? (y/n): ").lower().strip()
+        if ans != 'y':
+            print("Aborted.")
+            return
+        root = cwd
+
+    if not root.exists() or not root.is_dir():
+        print(f"ERROR: invalid path: {root}")
+        return
+
+    log_path = root / f"{LOG_PREFIX}{nowstr()}.log"
+    write_log(log_path, f"START root={root} dry_run={dry}")
+
+    # depth check
+    if not check_max_relative_depth(root, log_path):
+        print(f"ABORT: depth too large. See log: {log_path}")
+        return
+
+    # tmp root
+    if dry:
+        tmp_root = root / f"{TMP_DIR_PREFIX}DRYRUN"
+        write_log(log_path, f"DRY: Would create temp root: {tmp_root}", dry=True)
+    else:
+        tmp_root = root / f"{TMP_DIR_PREFIX}{os.getpid()}"
+        tmp_root.mkdir(exist_ok=False)
+        write_log(log_path, f"TEMP_DIR_CREATED: {tmp_root}")
+
+    # rename directories
+    try:
+        rename_directories_safe(root, log_path, dry)
+    except Exception as ex:
+        write_log(log_path, f"FATAL_DIR_RENAME: {ex}")
+        print(f"FATAL: directory rename error. See log: {log_path}")
+        return
+
+    # process files
+    try:
+        process_files_in_leaf_dirs(root, tmp_root, log_path, dry)
+    except Exception as ex:
+        write_log(log_path, f"ERROR_PROCESS_FILES: {ex}")
+
+    # cleanup tmp
+    if not dry:
+        try:
+            shutil.rmtree(tmp_root)
+            write_log(log_path, f"TEMP_DIR_REMOVED: {tmp_root}")
+        except Exception as ex:
+            write_log(log_path, f"WARNING_TMP_CLEANUP: {ex}")
+
+    write_log(log_path, "FINISHED")
+    print(f"Done. Log: {log_path}")
+
+
+if __name__ == "__main__":
+    main()
