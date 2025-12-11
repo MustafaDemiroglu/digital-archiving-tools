@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name: fix_folder_names_delete_zeros.sh 
-# Version: 2.3 
+# Version: 2.4 
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 #
@@ -67,18 +67,28 @@ fi
 # Function: fix name by removing leading zeros from every digit-only segment
 fix_name() {
   local name="$1"
-  # Use perl to replace every digit sequence: strip leading zeros, but leave single '0' if all zeros
-  # Example: 00150_010--0070 -> 150_10--70
-printf '%s' "$name" | awk '{
-    s=$0
-    while (match(s, /[0-9]+/)) {
-      block = substr(s, RSTART, RLENGTH)
-      # remove leading zeros
-      sub(/^0+/, "", block)
-      if (block == "") block = "0"
-      s = substr(s, 1, RSTART-1) block substr(s, RSTART + RLENGTH)
+  # Safe awk implementation: iterate through string, find digit-blocks,
+  # remove leading zeros (keep single "0" if block was all zeros), build result.
+  printf '%s' "$name" | awk '{
+    s=$0; out=""; pos=1; L=length(s)
+    while (pos <= L) {
+      rem = substr(s, pos)
+      if (match(rem, /[0-9]+/)) {
+        # append part before match
+        if (RSTART > 1) out = out substr(rem, 1, RSTART-1)
+        block = substr(rem, RSTART, RLENGTH)
+        # remove leading zeros
+        sub(/^0+/, "", block)
+        if (block == "") block = "0"
+        out = out block
+        # advance pos by chars consumed (prefix + original block length)
+        pos += RSTART - 1 + RLENGTH
+      } else {
+        out = out rem
+        break
+      }
     }
-    print s
+    print out
   }'
 }
 
