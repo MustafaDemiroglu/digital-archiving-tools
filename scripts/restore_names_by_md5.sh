@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# restore_md5_verbose.sh
-# Purpose: rename files in a directory based on MD5 mapping from an old.md5 file.
-# Messages and comments are in English.
-# Usage example:
-#   ./restore_md5_verbose.sh -o old.md5 -d hstam/4_b/581 --dry-run --verbose
-#
+# restore_names_by_md5_fixed.sh
+# Rename files based on md5 mapping from an old.md5 file.
+# All user messages are in English.
+
 set -u   # do not enable -e; we want to continue on per-file errors
 
 print_usage() {
@@ -64,7 +62,8 @@ fi
 
 echo "Loading mappings from: $OLD_MD5"
 declare -A MAP_TARGET
-declare -A MAP_DUP
+declare -A MAP_DUP=()   # <--- initialize duplicate map here to avoid 'unbound variable' with set -u
+
 # Read old.md5 and build md5 -> basename mapping (first mapping wins)
 while IFS= read -r line || [[ -n "$line" ]]; do
   md5=$(printf '%s' "$line" | grep -Eo '[a-fA-F0-9]{32}' | head -n1 || true)
