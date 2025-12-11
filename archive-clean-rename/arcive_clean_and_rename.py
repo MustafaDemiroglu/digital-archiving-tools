@@ -56,7 +56,7 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 # ==============================
 ALLOWED_EXTS = {'.tif', '.tiff', '.jpg', '.jpeg', '.png', '.pdf'}
 MAX_RELATIVE_DEPTH = 4
-TMP_DIR_PREFIX = "_tmp_archive_renamer_"
+TMP_DIR_PREFIX = "tmp_archive_renamer_"
 LOG_PREFIX = "archive_rename_log_"
 _ALLOWED_NAME_RE = re.compile(r'[^a-z0-9._-]')
 
