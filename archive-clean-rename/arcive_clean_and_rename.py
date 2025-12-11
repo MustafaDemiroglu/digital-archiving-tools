@@ -88,11 +88,14 @@ def sanitize_name(name: str) -> str:
 
     If the result is empty, returns 'x'.
     """
-   #name = unicodedata.normalize('NFKD', name)
+   #1name = unicodedata.normalize('NFKD', name)
+   #2name = unicodedata.normalize('NFKD', name)
     name = unicodedata.normalize('NFC', name)
     name = name.lower()
 
-   #name = name.replace('a¨', 'ae').replace('o¨', 'oe').replace('u¨', 'ue')
+   #1name = name.replace('a¨', 'ae').replace('o¨', 'oe').replace('u¨', 'ue')
+   #2name = name.replace('¨', 'e')
+
     name = name.replace('ä', 'ae').replace('ö', 'oe').replace('ü', 'ue').replace('ß', 'ss')  
     name = name.replace('/', '--')
     name = name.replace('+', '..')
@@ -257,7 +260,7 @@ def process_files_in_leaf_dirs(root: Path, tmp_root: Path, log_path: Path,
             ext = old_path.suffix.lower()
 
             new_base = f"{grandfather}_{father}_nr_{rootname}_{seq:04d}"
-            new_name = sanitize_name(new_base) + ext
+            new_name = new_base + ext
             tmp_target = tmp_sub / new_name
 
             if dry:
