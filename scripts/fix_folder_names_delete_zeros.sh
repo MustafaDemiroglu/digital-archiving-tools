@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name: fix_folder_names_delete_zeros.sh 
-# Version: 2.2 
+# Version: 2.3 
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 #
@@ -69,7 +69,17 @@ fix_name() {
   local name="$1"
   # Use perl to replace every digit sequence: strip leading zeros, but leave single '0' if all zeros
   # Example: 00150_010--0070 -> 150_10--70
-  printf '%s' "$name" | perl -pe 's/(\d+)/ do { my $m=$1; $m=~s/^0+//; $m eq "" ? "0" : $m } /ge'
+printf '%s' "$name" | awk '{
+    s=$0
+    while (match(s, /[0-9]+/)) {
+      block = substr(s, RSTART, RLENGTH)
+      # remove leading zeros
+      sub(/^0+/, "", block)
+      if (block == "") block = "0"
+      s = substr(s, 1, RSTART-1) block substr(s, RSTART + RLENGTH)
+    }
+    print s
+  }'
 }
 
 # Collect directories: depth 2 first, then depth 1
