@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: fix_folder_names_delete_zeros.sh 
-# Version: 2.0 
+# Version: 2.1 
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 #
@@ -52,44 +52,54 @@ fix_name() {
 
     # Process all pure-digit sequences globally
     while [[ "$cleaned" =~ ([0-9]+) ]]; do
-        full="${BASH_REMATCH[1]}"
-        trimmed=$(echo "$full" | sed 's/^0*\([0-9]\)/\1/')
-        cleaned="${cleaned/$full/$trimmed}"
+        block="${BASH_REMATCH[1]}"
+        trimmed=$(echo "$block" | sed 's/^0*\([0-9]\)/\1/')
+        cleaned="${cleaned/$block/$trimmed}"
+		
+		# safety break → infinite loop protection
+        [[ "$cleaned" == "$n" ]] && break
+        n="$cleaned"
     done
 
     echo "$cleaned"
 }
-
-export -f fix_name
 # ----------------------------------------------
 
-# ----------- Only depth 1 and 2 folders -------------
-find "$BASE_DIR" -mindepth 1 -maxdepth 2 -type d | while read -r dir; do
+# Collect directories first Only depth 1 and 2 folders ----------
+mapfile -t DIRLIST < <(find "$BASE_DIR" -mindepth 1 -maxdepth 2 -type d)
+
+TOTAL=${#DIRLIST[@]}
+COUNT=0
+
+# ------------------ Main Loop -------------------
+for dir in "${DIRLIST[@]}"; do
+    COUNT=$((COUNT+1))
+
+    # Progress bar (simple)
+    percent=$(( COUNT * 100 / TOTAL ))
+    echo -ne "Progress: $percent%  \r"
+
     name=$(basename "$dir")
     parent=$(dirname "$dir")
-
     newname=$(fix_name "$name")
 
-    # If no change → skip
-    if [[ "$name" == "$newname" ]]; then
-        continue
-    fi
+    [[ "$name" == "$newname" ]] && continue
 
     oldpath="$parent/$name"
     newpath="$parent/$newname"
 
-    # Prevent overwrite
     if [[ -e "$newpath" ]]; then
-        echo "WARNING: $newpath already exists, skipping $oldpath" | tee -a "$LOGFILE"
+        echo "WARNING: $newpath exists, skipping $oldpath" | tee -a "$LOGFILE"
         continue
     fi
 
     if [[ $DRYRUN -eq 1 ]]; then
-        echo "[DRY-RUN] $oldpath  -->  $newpath" | tee -a "$LOGFILE"
+        echo "[DRY-RUN] $oldpath --> $newpath" | tee -a "$LOGFILE"
     else
         mv "$oldpath" "$newpath"
-        echo "$oldpath  -->  $newpath" | tee -a "$LOGFILE"
+        echo "$oldpath --> $newpath" | tee -a "$LOGFILE"
     fi
 done
 
-echo "==== Folder Rename Finished at $(date) ====" >> "$LOGFILE"
+echo -e "\n==== Folder Rename Finished at $(date) ====" >> "$LOGFILE"
+echo -e "\nDone."
