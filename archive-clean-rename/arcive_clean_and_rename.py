@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 archive_clean_and_rename.py
-version: 3.1
+version: 4.0
 Author: Mustafa Demiroglu
 
 Simple, safe, cross-platform script to:
@@ -88,10 +88,12 @@ def sanitize_name(name: str) -> str:
 
     If the result is empty, returns 'x'.
     """
-    name = unicodedata.normalize('NFKD', name)
+   #name = unicodedata.normalize('NFKD', name)
+    name = unicodedata.normalize('NFC', name)
     name = name.lower()
 
-    name = name.replace('ä', 'ae').replace('ö', 'oe').replace('ü', 'ue').replace('ß', 'ss')
+   #name = name.replace('a¨', 'ae').replace('o¨', 'oe').replace('u¨', 'ue')
+    name = name.replace('ä', 'ae').replace('ö', 'oe').replace('ü', 'ue').replace('ß', 'ss')  
     name = name.replace('/', '--')
     name = name.replace('+', '..')
     name = re.sub(r'\s+', '_', name)
@@ -104,11 +106,16 @@ def sanitize_name(name: str) -> str:
 
     name = name.strip('._-')
 
-    if name.isdigit():
+    # Remove leading zeros from any numeric segment (global)
+    # e.g. 001013_ay -> 1013_ay ; ayd_001014 -> ayd_1014 ; '000' -> '0'
+    def _strip_leading_zeros(match: re.Match) -> str:
+        s = match.group(0)
         try:
-            name = str(int(name))
+            return str(int(s))
         except Exception:
-            pass
+            return s  # fallback, should not happen
+
+    name = re.sub(r'\d+', _strip_leading_zeros, name)
 
     return name if name else 'x'
 
@@ -292,6 +299,15 @@ def process_files_in_leaf_dirs(root: Path, tmp_root: Path, log_path: Path,
                 # Try atomic replace which will overwrite final_target if it exists
                 tmp_file.replace(final_target)
                 write_log(log_path, f"RENAMED_FILE: {old_path} -> {final_target}")
+                # After successful move, remove the original old_path (if different)
+                try:
+                    # If final_target and old_path are the same path, do NOT unlink,
+                    # because final_target now refers to the new file. Only unlink old_path if it still exists and is a different path.
+                    if old_path.exists() and (old_path.resolve() != final_target.resolve()):
+                        old_path.unlink()
+                        write_log(log_path, f"REMOVED_OLD_FILE: {old_path}")
+                except Exception as del_ex:
+                    write_log(log_path, f"ERROR_REMOVING_OLD_FILE: {old_path}: {del_ex}")
             except Exception as ex:
                 write_log(log_path, f"ERROR_MOVE: {tmp_file} -> {final_target}: {ex}")
                 # try alternative: unique final target
@@ -299,6 +315,12 @@ def process_files_in_leaf_dirs(root: Path, tmp_root: Path, log_path: Path,
                     alt = unique_path(final_target)
                     tmp_file.replace(alt)
                     write_log(log_path, f"RENAMED_FILE_ALT: {old_path} -> {alt}")
+                    try:
+                        if old_path.exists() and (old_path.resolve() != alt.resolve()):
+                            old_path.unlink()
+                            write_log(log_path, f"REMOVED_OLD_FILE: {old_path}")
+                    except Exception as del_ex:
+                        write_log(log_path, f"ERROR_REMOVING_OLD_FILE_AFTER_ALT: {old_path}: {del_ex}")
                 except Exception as ex2:
                     write_log(log_path, f"FAILED_MOVE_ALT: {tmp_file} -> {final_target}: {ex2}")
 
@@ -426,7 +448,7 @@ def main() -> None:
         raise
 
     # Clean up temporary directory after successful completion
-    if not dry and tmp_root.exists():
+   if not dry and tmp_root.exists():
         try:
             shutil.rmtree(tmp_root)
             write_log(log_path, f"Removed temporary directory: {tmp_root}")
@@ -448,6 +470,23 @@ def main() -> None:
                 write_log(log_path, f"ERROR_FINAL_CLEANUP: {e3}")
                 print(f"Warning: Could not remove temporary directory: {tmp_root}")
                 print("You may need to remove it manually.")
+
+    # Additional: remove any stray empty tmp dirs with or without leading underscore that match pattern,
+    # but only if they are empty and include 'archive_renamer' in name (safe cleanup).
+    if not dry:
+        try:
+            for p in root.iterdir():
+                if p.is_dir() and ('archive_renamer' in p.name):
+                    # accept both "_tmp_archive_renamer_" and "tmp_archive_renamer_"
+                    if not any(p.iterdir()):
+                        try:
+                            p.rmdir()
+                            write_log(log_path, f"Removed stray empty tmp dir: {p}")
+                        except Exception as e:
+                            write_log(log_path, f"ERROR_REMOVING_STRAY_TMP: {p}: {e}")
+        except Exception as e:
+            write_log(log_path, f"ERROR_CHECK_STRAY_TMP: {e}")
+
 
     write_log(log_path, "=== FINISHED ===")
     print(f"\nOperation completed successfully.")
