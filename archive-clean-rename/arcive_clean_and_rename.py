@@ -448,7 +448,7 @@ def main() -> None:
         raise
 
     # Clean up temporary directory after successful completion
-   if not dry and tmp_root.exists():
+    if not dry and tmp_root.exists():
         try:
             shutil.rmtree(tmp_root)
             write_log(log_path, f"Removed temporary directory: {tmp_root}")
@@ -461,32 +461,24 @@ def main() -> None:
                         if p.is_file():
                             p.unlink()
                         else:
-                            p.rmdir()
+                            # attempt to remove empty dirs only
+                            try:
+                                p.rmdir()
+                            except OSError:
+                                # directory not empty, skip
+                                pass
                     except Exception as e2:
                         write_log(log_path, f"ERROR_MANUAL_CLEANUP: {p}: {e2}")
-                tmp_root.rmdir()
-                write_log(log_path, f"Manually removed temporary directory: {tmp_root}")
+                # try removing tmp_root itself
+                try:
+                    tmp_root.rmdir()
+                    write_log(log_path, f"Manually removed temporary directory: {tmp_root}")
+                except Exception as e_inner:
+                    write_log(log_path, f"ERROR_MANUAL_RMDIR_TMP_ROOT: {tmp_root}: {e_inner}")
             except Exception as e3:
                 write_log(log_path, f"ERROR_FINAL_CLEANUP: {e3}")
                 print(f"Warning: Could not remove temporary directory: {tmp_root}")
                 print("You may need to remove it manually.")
-
-    # Additional: remove any stray empty tmp dirs with or without leading underscore that match pattern,
-    # but only if they are empty and include 'archive_renamer' in name (safe cleanup).
-    if not dry:
-        try:
-            for p in root.iterdir():
-                if p.is_dir() and ('archive_renamer' in p.name):
-                    # accept both "_tmp_archive_renamer_" and "tmp_archive_renamer_"
-                    if not any(p.iterdir()):
-                        try:
-                            p.rmdir()
-                            write_log(log_path, f"Removed stray empty tmp dir: {p}")
-                        except Exception as e:
-                            write_log(log_path, f"ERROR_REMOVING_STRAY_TMP: {p}: {e}")
-        except Exception as e:
-            write_log(log_path, f"ERROR_CHECK_STRAY_TMP: {e}")
-
 
     write_log(log_path, "=== FINISHED ===")
     print(f"\nOperation completed successfully.")
