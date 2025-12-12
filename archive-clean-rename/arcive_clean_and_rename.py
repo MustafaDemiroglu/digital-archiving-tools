@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Name        : archive_clean_and_rename.py
-Version     : 4.3
+Version     : 4.4
 Author      : Mustafa Demiroglu
 Organisation: HlaDigiTeam
 
@@ -227,44 +227,20 @@ def process_files_in_leaf_dirs(root: Path, tmp_root: Path, log_path: Path,
         if not files:
             continue
 
-        # Identify names, use resolved path parts to compute names relative to `root` robustly.
+        # Identify names, always use the directory's immediate parent and grandparent (if present),
         rootname = sanitize_name(dirp.name)
 
-        try:
-            dir_resolved = dirp.resolve()
-            root_resolved = root.resolve()
-        except Exception:
-            # Fallback to non-resolved if resolve() fails for some reason
-            dir_resolved = dirp
-            root_resolved = root
-
-        dir_parts = list(dir_resolved.parts)
-        root_parts = list(root_resolved.parts)
-
-        # If dirp is inside root, take the parts after root; otherwise fall back to using full parts.
-        if len(dir_parts) >= len(root_parts) and dir_parts[: len(root_parts)] == root_parts:
-            rel_parts = dir_parts[len(root_parts):]  # parts under root
-        else:
-            rel_parts = dir_parts  # best-effort fallback
-
-        # rel_parts contains the path components under root; pick father/grandfather robustly:
-        # Examples:
-        #  - root/.../A/B/C  -> rel_parts == ['A','B','C']  -> father='B', grandfather='A'
-        #  - root/X/Y    -> rel_parts == ['X','Y']      -> father='X', grandfather=root.name
-        #  - root/Z      -> rel_parts == ['Z']          -> father='x', grandfather='x'
-        if len(rel_parts) >= 2:
-            father = sanitize_name(rel_parts[-2])
-            if len(rel_parts) >= 3:
-                grandfather = sanitize_name(rel_parts[-3])
-            else:
-                # father exists but no higher ancestor under root -> use root's name as grandfather
-                grandfather = sanitize_name(root_resolved.name)
-        elif len(rel_parts) == 1:
-            # dir is directly under root -> keep original behavior: no father/grandfather
-            father = 'x'
-            grandfather = 'x'
+        # father: immediate parent of dirp, if any
+        if dirp.parent and dirp.parent != dirp:
+            father = sanitize_name(dirp.parent.name) if dirp.parent.name else 'x'
         else:
             father = 'x'
+
+        # grandfather: parent of the parent, if any
+        gp = dirp.parent.parent if dirp.parent else None
+        if gp and gp != dirp.parent:
+            grandfather = sanitize_name(gp.name) if gp.name else 'x'
+        else:
             grandfather = 'x'
 
         # Correct progress total
