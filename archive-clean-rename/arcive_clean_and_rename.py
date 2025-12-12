@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Name        : archive_clean_and_rename.py
-Version     : 4.6
+Version     : 4.7
 Author      : Mustafa Demiroglu
 Organisation: HlaDigiTeam
 
@@ -458,6 +458,7 @@ def main() -> None:
         raise
 
     # Clean up temporary directory after successful completion
+    write_log(log_path, "Phase 3: Deleting temporary directory")
     if not dry and tmp_root.exists():
         try:
             shutil.rmtree(tmp_root)
@@ -491,6 +492,7 @@ def main() -> None:
                 print("You may need to remove it manually.")
     
     # Attempt to rename the root directory itself (deferred until after other operations)
+    write_log(log_path, "Phase 4: Rename Root if needed")
     try:
         new_root_name = sanitize_name(root.name)
         if new_root_name != root.name:
