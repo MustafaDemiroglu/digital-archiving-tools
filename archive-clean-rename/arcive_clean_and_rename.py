@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Name        : archive_clean_and_rename.py
-Version     : 4.2
+Version     : 4.3
 Author      : Mustafa Demiroglu
 Organisation: HlaDigiTeam
 
@@ -227,8 +227,7 @@ def process_files_in_leaf_dirs(root: Path, tmp_root: Path, log_path: Path,
         if not files:
             continue
 
-        # Identify names
-        # Use resolved path parts to compute names relative to `root` robustly.
+        # Identify names, use resolved path parts to compute names relative to `root` robustly.
         rootname = sanitize_name(dirp.name)
 
         try:
@@ -238,20 +237,35 @@ def process_files_in_leaf_dirs(root: Path, tmp_root: Path, log_path: Path,
             # Fallback to non-resolved if resolve() fails for some reason
             dir_resolved = dirp
             root_resolved = root
-            
+
         dir_parts = list(dir_resolved.parts)
-        root_parts = list(root_resolved.parts) 
-        
+        root_parts = list(root_resolved.parts)
+
         # If dirp is inside root, take the parts after root; otherwise fall back to using full parts.
         if len(dir_parts) >= len(root_parts) and dir_parts[: len(root_parts)] == root_parts:
             rel_parts = dir_parts[len(root_parts):]  # parts under root
         else:
             rel_parts = dir_parts  # best-effort fallback
-            
-        # rel_parts contains the path components under root; pick from the end:
-        # e.g. for root/.../A/B/C  -> rel_parts == ['A','B','C']
-        father = sanitize_name(rel_parts[-2]) if len(rel_parts) >= 2 else 'x'
-        grandfather = sanitize_name(rel_parts[-3]) if len(rel_parts) >= 3 else 'x'
+
+        # rel_parts contains the path components under root; pick father/grandfather robustly:
+        # Examples:
+        #  - root/.../A/B/C  -> rel_parts == ['A','B','C']  -> father='B', grandfather='A'
+        #  - root/X/Y    -> rel_parts == ['X','Y']      -> father='X', grandfather=root.name
+        #  - root/Z      -> rel_parts == ['Z']          -> father='x', grandfather='x'
+        if len(rel_parts) >= 2:
+            father = sanitize_name(rel_parts[-2])
+            if len(rel_parts) >= 3:
+                grandfather = sanitize_name(rel_parts[-3])
+            else:
+                # father exists but no higher ancestor under root -> use root's name as grandfather
+                grandfather = sanitize_name(root_resolved.name)
+        elif len(rel_parts) == 1:
+            # dir is directly under root -> keep original behavior: no father/grandfather
+            father = 'x'
+            grandfather = 'x'
+        else:
+            father = 'x'
+            grandfather = 'x'
 
         # Correct progress total
         files_sorted = sorted(files, key=natural_key)
