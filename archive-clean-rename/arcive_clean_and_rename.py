@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-archive_clean_and_rename.py
-version: 4.0
-Author: Mustafa Demiroglu
+Name        : archive_clean_and_rename.py
+Version     : 4.2
+Author      : Mustafa Demiroglu
+Organisation: HlaDigiTeam
 
 Simple, safe, cross-platform script to:
   1. Fix folder names according to HLA “Benennungsrichtlinie”
@@ -88,13 +89,8 @@ def sanitize_name(name: str) -> str:
 
     If the result is empty, returns 'x'.
     """
-   #1name = unicodedata.normalize('NFKD', name)
-   #2name = unicodedata.normalize('NFKD', name)
     name = unicodedata.normalize('NFC', name)
     name = name.lower()
-
-   #1name = name.replace('a¨', 'ae').replace('o¨', 'oe').replace('u¨', 'ue')
-   #2name = name.replace('¨', 'e')
 
     name = name.replace('ä', 'ae').replace('ö', 'oe').replace('ü', 'ue').replace('ß', 'ss')  
     name = name.replace('/', '--')
@@ -232,9 +228,30 @@ def process_files_in_leaf_dirs(root: Path, tmp_root: Path, log_path: Path,
             continue
 
         # Identify names
+        # Use resolved path parts to compute names relative to `root` robustly.
         rootname = sanitize_name(dirp.name)
-        father = sanitize_name(dirp.parent.name) if dirp.parent and dirp.parent != root else 'x'
-        grandfather = sanitize_name(dirp.parent.parent.name) if dirp.parent and dirp.parent.parent and dirp.parent.parent != root else 'x'
+
+        try:
+            dir_resolved = dirp.resolve()
+            root_resolved = root.resolve()
+        except Exception:
+            # Fallback to non-resolved if resolve() fails for some reason
+            dir_resolved = dirp
+            root_resolved = root
+            
+        dir_parts = list(dir_resolved.parts)
+        root_parts = list(root_resolved.parts) 
+        
+        # If dirp is inside root, take the parts after root; otherwise fall back to using full parts.
+        if len(dir_parts) >= len(root_parts) and dir_parts[: len(root_parts)] == root_parts:
+            rel_parts = dir_parts[len(root_parts):]  # parts under root
+        else:
+            rel_parts = dir_parts  # best-effort fallback
+            
+        # rel_parts contains the path components under root; pick from the end:
+        # e.g. for root/.../A/B/C  -> rel_parts == ['A','B','C']
+        father = sanitize_name(rel_parts[-2]) if len(rel_parts) >= 2 else 'x'
+        grandfather = sanitize_name(rel_parts[-3]) if len(rel_parts) >= 3 else 'x'
 
         # Correct progress total
         files_sorted = sorted(files, key=natural_key)
