@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Name        : archive_clean_and_rename.py
-Version     : 4.4
+Version     : 4.5
 Author      : Mustafa Demiroglu
 Organisation: HlaDigiTeam
 
@@ -489,6 +489,34 @@ def main() -> None:
                 write_log(log_path, f"ERROR_FINAL_CLEANUP: {e3}")
                 print(f"Warning: Could not remove temporary directory: {tmp_root}")
                 print("You may need to remove it manually.")
+    
+    # Attempt to rename the root directory itself (deferred until after other operations)
+    try:
+        new_root_name = sanitize_name(root.name)
+        if new_root_name != root.name:
+            new_root_path = root.parent / new_root_name
+
+            # If target exists, choose a unique path (unless it's the same directory)
+            if new_root_path.exists() and not dry:
+                try:
+                    if not new_root_path.exists() or not new_root_path.samefile(root):
+                        new_root_path = unique_path(new_root_path)
+                except Exception:
+                    new_root_path = unique_path(new_root_path)
+
+            if dry:
+                write_log(log_path, f"Would rename root dir: {root} -> {new_root_path}", dry=True)
+                print(f"Would rename root dir: {root} -> {new_root_path}")
+            else:
+                try:
+                    root.rename(new_root_path)
+                    write_log(log_path, f"RENAMED_ROOT_DIR: {root} -> {new_root_path}")
+                    # Update root variable so subsequent messages (if any) use new path
+                    root = new_root_path
+                except Exception as ex:
+                    write_log(log_path, f"ERROR_RENAMING_ROOT: {root} -> {new_root_path}: {ex}")
+    except Exception as e:
+        write_log(log_path, f"ERROR_RENAMING_ROOT_BLOCK: {e}")
 
     write_log(log_path, "=== FINISHED ===")
     print(f"\nOperation completed successfully.")
