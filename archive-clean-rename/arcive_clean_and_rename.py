@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Name        : archive_clean_and_rename.py
-Version     : 4.5
+Version     : 4.6
 Author      : Mustafa Demiroglu
 Organisation: HlaDigiTeam
 
@@ -509,14 +509,39 @@ def main() -> None:
                 print(f"Would rename root dir: {root} -> {new_root_path}")
             else:
                 try:
+                    # Perform rename (this moves the log file too)
                     root.rename(new_root_path)
+
+                    # Update log_path to point to the moved log file before writing further entries
+                    try:
+                        log_path = new_root_path / log_path.name
+                    except Exception:
+                        # best-effort; if this fails we'll still attempt to log below
+                        pass
+
                     write_log(log_path, f"RENAMED_ROOT_DIR: {root} -> {new_root_path}")
-                    # Update root variable so subsequent messages (if any) use new path
+                    # Update root variable so subsequent messages (if any) use the new path
                     root = new_root_path
                 except Exception as ex:
-                    write_log(log_path, f"ERROR_RENAMING_ROOT: {root} -> {new_root_path}: {ex}")
+                    # Attempt to log the error; if original log file path no longer exists,
+                    # fall back to printing or writing into parent directory.
+                    try:
+                        write_log(log_path, f"ERROR_RENAMING_ROOT: {root} -> {new_root_path}: {ex}")
+                    except Exception:
+                        try:
+                            # fallback: write a minimal message to a log in the parent dir
+                            fallback_log = (root.parent / log_path.name) if log_path else (Path.cwd() / f"fallback_{log_path.name}")
+                            with fallback_log.open("a", encoding="utf-8") as f:
+                                f.write(f"{nowstr()}  ERROR_RENAMING_ROOT: {root} -> {new_root_path}: {ex}\n")
+                        except Exception:
+                            # last resort: print to stdout so user sees the error
+                            print(f"ERROR_RENAMING_ROOT: {root} -> {new_root_path}: {ex}")
     except Exception as e:
-        write_log(log_path, f"ERROR_RENAMING_ROOT_BLOCK: {e}")
+        # If something unexpected happens while performing the rename block, try to record it
+        try:
+            write_log(log_path, f"ERROR_RENAMING_ROOT_BLOCK: {e}")
+        except Exception:
+            print(f"ERROR_RENAMING_ROOT_BLOCK: {e}")
 
     write_log(log_path, "=== FINISHED ===")
     print(f"\nOperation completed successfully.")
