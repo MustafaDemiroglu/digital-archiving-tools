@@ -366,7 +366,7 @@ process_pdf() {
         expected_extensions=()
         if [[ "$OUTFMT" == "tif" ]]; then expected_extensions=("tif")
         elif [[ "$OUTFMT" == "jpg" ]]; then expected_extensions=("jpg")
-        else expected_extensions=("tif" "jpg" "pbm" "pgm" "ppm"); fi
+        else expected_extensions=("tif" "jpg" "pbm" "pgm" "png" "ppm"); fi
         
         # Check for conflicts with existing files
         for ext in "${expected_extensions[@]}"; do
