@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: digitalisate_move_and_rename.sh (Version 3.2)
+# Script Name: digitalisate_move_and_rename.sh
+# Version: 3.2 
+# Author: Mustafa Demiroglu
+# Organisation: HlaDigiTeam
 #
 # Description:
 #   This script helps archivists move and rename media files safely
 #   according to instructions in a CSV file.
 #
 #   Supported file types (case-insensitive):
-#       jpg, jpeg, tif, tiff, mp4, mkv, wav, mp3
+#       jpg, jpeg, tif, tiff, pdf, mp4, mkv, wav, mp3
 #
 #   - CSV must have 3 columns:
 #       Source_Pfad    Ziel_Pfad    New_filenames
 #   - Script operations:
-#       1) Move files from Source_Pfad → Ziel_Pfad (no copying)
+#       1) Move files from Source_Pfad → Ziel_Pfad (not only copying)
 #       2) Create Ziel_Pfad if it doesn't exist
 #       3) Smart numbering to prevent file conflicts
 #       4) Rename files according to New_filenames column
@@ -23,6 +26,11 @@
 #
 # Usage:
 #   ./digitalisate_move_and_rename.sh [-n] [-v] [base_path]
+#   ./digitalisate_move_and_rename.sh [-n] [-v]
+#   ./digitalisate_move_and_rename.sh [-n]
+#   ./digitalisate_move_and_rename.sh [-v]
+#   ./digitalisate_move_and_rename.sh [base_path]
+#   ./digitalisate_move_and_rename.sh
 #
 # Options:
 #   -n   Dry-run mode (show actions but don't execute)
@@ -42,7 +50,7 @@ NC='\033[0m'
 DRY_RUN=false
 VERBOSE=false
 BASE_PATH=""
-OUTPUT_FILE="$(basename "$0" .sh)_output_$(date +%Y%m%d_%H%M%S).list"
+OUTPUT_FILE="move_and_rename_$(date +%Y%m%d_%H%M%S).log"
 RENAMED_CSV="renamed_files_$(date +%Y%m%d_%H%M%S).csv"
 LOG_ACTIONS=()
 TERMINAL_LOG=()
@@ -51,8 +59,8 @@ TOTAL_FILES=0
 PROCESSED_FILES=0
 
 # --- FILETYPE SETTINGS ---
-SUPPORTED_REGEX='.*\.\(jpe?g|tiff?|mp4|mkv|wav|mp3\)$'  # case-insensitive with -iregex
-SUPPORTED_LIST='jpg, jpeg, tif, tiff, mp4, mkv, wav, mp3'
+SUPPORTED_REGEX='.*\.\(jpe?g|tiff?|pdf|mp4|mkv|wav|mp3\)$'  # case-insensitive with -iregex
+SUPPORTED_LIST='jpg, jpeg, tif, tiff, pdf, mp4, mkv, wav, mp3'
 
 # Safer globs: expand to empty when no match
 shopt -s nullglob
