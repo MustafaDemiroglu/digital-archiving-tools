@@ -74,10 +74,10 @@ Includes actions, warnings, and errors.
 This script requires **Python 3.6+**.
 
 ### Clone the repository:
-''' bash
+´´´ bash
 git clone https://github.com/Mustafa.Demiroglu/archive-clean-rename.git
 cd archive-clean-rename
-''' text
+´´´ text
 ## Usage
 ### Dry-run (recommended first):
 python3 archive_clean_and_rename.py -n /path/to/root
