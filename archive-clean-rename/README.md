@@ -73,12 +73,10 @@ Includes actions, warnings, and errors.
 
 This script requires **Python 3.6+**.
 
-Clone the repository:
-
-```bash
+### Clone the repository:
 git clone https://github.com/Mustafa.Demiroglu/archive-clean-rename.git
 cd archive-clean-rename
-```
+
 ## Usage
 ### Dry-run (recommended first):
 python3 archive_clean_and_rename.py -n /path/to/root
@@ -129,4 +127,4 @@ Issues / feature requests can be submitted via GitHub Issues.
 ## Author
 
 Originally developed by Mustafa Demiroğlu,
-Data Steward & Digital Archival Workflow Engineer.
+Data Steward & Digital Archival Workflow Spezialist
