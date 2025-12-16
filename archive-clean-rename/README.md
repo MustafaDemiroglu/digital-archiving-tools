@@ -77,7 +77,7 @@ This script requires **Python 3.6+**.
 ``` bash
 git clone https://github.com/Mustafa.Demiroglu/archive-clean-rename.git
 cd archive-clean-rename
-´´´
+```
 ## Usage
 ### Dry-run (recommended first):
 python3 archive_clean_and_rename.py -n /path/to/root
