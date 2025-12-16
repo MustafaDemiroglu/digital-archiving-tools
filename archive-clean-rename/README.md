@@ -74,9 +74,10 @@ Includes actions, warnings, and errors.
 This script requires **Python 3.6+**.
 
 ### Clone the repository:
+''' bash
 git clone https://github.com/Mustafa.Demiroglu/archive-clean-rename.git
 cd archive-clean-rename
-
+''' text
 ## Usage
 ### Dry-run (recommended first):
 python3 archive_clean_and_rename.py -n /path/to/root
@@ -109,7 +110,7 @@ If deeper than 4 levels → script aborts automatically.
 
 During real runs (not dry-run), a temp directory is created automatically:
 
-._tmp_archive_renamer_<pid>
+tmp_archive_renamer_<pid>
 
 It is removed after successful processing.
 
