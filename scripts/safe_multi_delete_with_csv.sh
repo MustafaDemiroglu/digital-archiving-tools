@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: safe_multi_delete_with_csv.sh (v.6.0)
+# Script Name: safe_multi_delete_with_csv.sh
+# Version: 6.0
 # Author: Mustafa Demiroglu
 #
 # Description:

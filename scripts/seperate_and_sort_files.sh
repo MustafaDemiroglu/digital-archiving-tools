@@ -1,5 +1,34 @@
 #!/bin/bash
 
+# =============================================================================
+# SCRIPT: Seperate Dirs / Move and Renumber TIF Files
+# =============================================================================
+# DESCRIPTION:
+#   This script moves TIF files from a source folder to a target folder and
+#   renumbers them sequentially starting from 1. It only processes files that
+#   have a number equal to or greater than a specified start number.
+#
+# HOW IT WORKS:
+#   1. Checks if source folder exists and target folder is empty/creatable
+#   2. Lists all TIF files in source folder matching the pattern
+#   3. Filters files with numbers >= START_NUMBER
+#   4. Moves filtered files to target folder
+#   5. Renumbers them sequentially starting from 0001
+#
+# FILE NAMING PATTERN:
+#   Source: hhstaw_519--3_nr_<SOURCE_FOLDER>_<NUMBER>.tif
+#   Target: hhstaw_519--3_nr_<TARGET_FOLDER>_<NUMBER>.tif
+#
+# USAGE:
+#   ./script.sh <SOURCE_FOLDER> <TARGET_FOLDER> <START_NUMBER>
+#
+# EXAMPLE:
+#   ./script.sh folder1 folder2 50
+#   This will move all files from folder1 with numbers >= 0050 to folder2,
+#   renumbering them as 0001, 0002, 0003, etc.
+#
+# =============================================================================
+
 # Check arguments
 if [ "$#" -ne 3 ]; then
     echo "Usage: $0 <SOURCE_FOLDER> <TARGET_FOLDER> <START_NUMBER>"

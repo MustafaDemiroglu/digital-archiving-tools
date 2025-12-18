@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-#
+
+############################################
 # Script Name: path_cleaner_and_formatter.sh
+# Author: Mustafa Demiroglu
+# Version: 3.2
+# License: MIT
 #
 # Description:
 #   Lists CSV files in the current working directory,
@@ -11,11 +15,7 @@
 #       3. Keeping only the middle directory structure
 #       4. Removing duplicate directory entries
 #   Saves result into a new file with '_done.csv' suffix.
-#
-# Author: Mustafa Demiroglu
-# Version: 3.2
-# License: MIT
-#
+#############################################
 
 # --- Step 1: List CSV files in current directory ---
 shopt -s nullglob

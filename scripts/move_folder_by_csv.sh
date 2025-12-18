@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: move_folder_by_csv.sh (Version: 3.4)
+# Script Name: move_folder_by_csv.sh 
+# Version: 4.0
 # Author: Mustafa Demiroglu
 # Description:
 #   This script reads a CSV file that contains a list of folder paths (one per line).
 #   It synchronizes each folder into a target directory using rsync, then verifies
-#   file integrity with per-file SHA-256 checks. Only after successful verification
+#   file integrity with per-file md5sum checks. Only after successful verification
 #   are source files removed. If verification fails, the source is kept and an
 #   error is recorded.
 #   - Reliable logging and error reporting even with parallel execution.
@@ -14,7 +15,7 @@
 #
 # Features:
 #   - Dry-run mode (preview actions without changes).
-#   - Per-file checksum verification (sha256).
+#   - Per-file checksum verification (md5sum).
 #   - Structured logging with timestamps (script.log).
 #   - Error report CSV for failures (errors.csv).
 #   - Optional parallel execution with GNU parallel.
@@ -50,7 +51,7 @@ ERROR_FILE="error_${SCRIPT_BASENAME}_${RUN_DATUM}.csv"
 print_usage() {
   echo -e "${YELLOW}CSV Folder Sync (with per-file checksum verification)${NC}"
   echo "This script copies folders from a CSV list into a target directory,"
-  echo "verifies files with SHA-256, then removes source files only if verified."
+  echo "verifies files with md5sum, then removes source files only if verified."
   echo
   echo "Usage:"
   echo "  $0 -c input.csv -t /path/to/target [-n|--dry-run] [-p N|--parallel N] [-v|--verbose]"
@@ -83,7 +84,7 @@ done
 [[ ! -d "$TARGET_DIR" ]] && { echo -e "${RED}Error: Target dir not found -> $TARGET_DIR${NC}"; exit 1; }
 
 # Required binaries
-for bin in rsync sha256sum; do
+for bin in rsync md5sum; do
   if ! command -v "$bin" >/dev/null 2>&1; then
     echo -e "${RED}Error: '$bin' is required but not found in PATH.${NC}"
     exit 1
@@ -148,7 +149,7 @@ process_folder() {
   # Replace Windows-style backslashes with forward slashes 
   folder="$(echo "$folder" | sed 's#\\#/#g')"
 
-  # Alt yol substring logic için normalize: başındaki çift/kesirli slash'lar silinsin
+  # Children path substring logic normalize: delete double/one slashs
   folder="$(echo "$folder" | sed 's#^/*##')"
   folder="/$folder"
 
@@ -162,9 +163,9 @@ process_folder() {
   fi
 
   # --------- Begin: Custom destination path logic -----------
-  # Base roots substring mantigi: eger path'in herhangi bir yerine "/media/archive/www" veya "/media/cepheus" varsa, ilk gecen yerden itibaren substring çıkarılır.
+  # Base roots substring logic: if path includes "/media/archive/public/www" or "/media/cepheus", will be deleted.
   local abs_base=""
-  local base1="/media/archive/www"
+  local base1="/media/archive/public/www"
   local base2="/media/cepheus"
   if [[ "$folder" == "$base1"* ]]; then
     abs_base="${folder:${#base1}}"
@@ -210,13 +211,13 @@ process_folder() {
       append_error_csv "$err_file" "$folder" "$rel" "missing_destination" "Destination file not found after copy"
       continue
     fi
-	# Compute SHA-256 for src and dest
+	# Compute md5sum for src and dest
     local src_hash dst_hash
-    src_hash="$(sha256sum "$src_file" | awk '{print $1}')"
-    dst_hash="$(sha256sum "$dst_file" | awk '{print $1}')"
+    src_hash="$(md5sum "$src_file" | awk '{print $1}')"
+    dst_hash="$(md5sum "$dst_file" | awk '{print $1}')"
     if [[ "$src_hash" != "$dst_hash" ]]; then
       mismatches=$((mismatches+1))
-      append_error_csv "$err_file" "$folder" "$rel" "checksum_mismatch" "SHA-256 differs (src!=dst)"
+      append_error_csv "$err_file" "$folder" "$rel" "checksum_mismatch" "md5sum differs (src!=dst)"
     else
       verified=$((verified+1))
     fi

@@ -1,6 +1,7 @@
 #!/bin/bash
 ###############################################################################
-# Script Name: pdf_extract_images_parallel.sh (based on pdf_extract_images_parallel.sh v:5.8)
+# Script Name: pdf_extract_images_parallel.sh 
+# Based on: pdf_extract_images.sh v:5.8, which is already deleted
 # Version 1.2 
 # Author : Mustafa Demiroglu
 #

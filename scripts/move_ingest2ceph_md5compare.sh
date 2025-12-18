@@ -1,3 +1,7 @@
+########### should be rewritten 
+
+
+
 #!/bin/bash
 
 # sourcing library

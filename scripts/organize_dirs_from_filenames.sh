@@ -1,7 +1,9 @@
 #!/bin/bash
 ###############################################################################
-# Script Name: organize_dirs_from_filenames.sh (v 3.2)
+# Script Name: organize_dirs_from_filenames.sh
+# Version: 3.2
 # Author: Mustafa Demiroglu 
+#
 # Description:
 #   This script organizes .tif files into specific folder structures based on
 #   their filenames. The folder structure is determined by extracting parts of
@@ -19,11 +21,11 @@
 # Requirements:
 #   - Bash shell
 #   - Linux or WSL environment
-#   - Files should be in the same directory as the script
+#   - Files should be in the same directory where the script executed 
 ###############################################################################
 
 # Define valid file extensions
-valid_extensions="tif|TIF|TIFF|jpg|jpeg|pdf"
+valid_extensions="tif|tiff|TIF|TIFF|jpg|jpeg|JPG|JPEG|pdf|PDF"
 
 # Loop through all the image and document files with relevant extensions in the current directory
 for file in *; do	

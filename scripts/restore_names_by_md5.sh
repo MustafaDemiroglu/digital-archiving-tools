@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# restore_names_by_md5_fixed.sh
+# restore_names_by_md5.sh
 # Rename files based on md5 mapping from an old.md5 file.
-# All user messages are in English.
 
 set -u   # do not enable -e; we want to continue on per-file errors
 

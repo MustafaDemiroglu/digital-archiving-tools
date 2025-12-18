@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: ausbelichtung_rename_and_copy.sh Version:2.3
+# Script Name: ausbelichtung_rename_and_copy.sh 
+# Version:2.3
 # Author: Mustafa Demiroglu
 #
 # Description:

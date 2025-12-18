@@ -1,10 +1,12 @@
 #!/bin/bash
 
 ################################################################################
-# Change Archive Architectur Script
-# Script Name: change_archive_architectur.sh Version:1.0
+# Change Archive Struktur (Move/Copy and Rename) Script
+# Script Name: architecturzeichnungen_moderate_archive.sh 
+# Version:1.1
 # Author: Mustafa Demiroglu
-# Owner: HLA
+# Organisation: HlaDigiTeam
+# License: MIT
 #
 # PURPOSE:
 #   This script processes architectural drawing archive data from a CSV file
@@ -22,10 +24,10 @@
 #   20940155;Bad Brückenau, Projekte...;9395764;Karten P II 10162;Karten P II 10162/3
 #
 # USAGE:
-#   ./change_archive_architectur.sh input.csv
-#   ./change_archive_architectur.sh -v input.csv          # Verbose mode
-#   ./change_archive_architectur.sh -n input.csv          # Dry-run (no actual changes)
-#   ./change_archive_architectur.sh -h                    # Show help
+#   ./architecturzeichnungen_moderate_archive.sh input.csv
+#   ./architecturzeichnungen_moderate_archive.sh -v input.csv          # Verbose mode
+#   ./architecturzeichnungen_moderate_archive.sh -n input.csv          # Dry-run (no actual changes)
+#   ./architecturzeichnungen_moderate_archive.sh -h                    # Show help
 #
 # OUTPUT:
 #   - dirs_to_create.log: List of directories to be created
@@ -157,7 +159,7 @@ setup_temp_dir() {
     log_message "INFO" "Temporary directory initialized: ${TEMP_DIR}"
 }
 
-#   id_1;description;id_2;Old_Signature;New_Signature;Additional_Details
+#   Architecturzeichnug;Description;Id;Old_Signature;New_Signature;Additional_Details
 
 # Parse CSV and create folder structure list
 process_csv_for_folders() {
@@ -168,7 +170,7 @@ process_csv_for_folders() {
     log_message "INFO" "Processing CSV for folder creation..."
     
     # Read CSV line by line
-    while IFS=';' read -r id_1 desc id_2 signatur new_sig extra_info1 extra_info2 extra_info3; do
+    while IFS=';' read -r arch_sig desc id signatur new_sig extra_info1 extra_info2 extra_info3; do
         line_num=$((line_num + 1))
         
         # Skip empty lines
@@ -249,7 +251,7 @@ process_file_migration() {
     
     log_message "INFO" "Processing file migration..."
     
-    while IFS=';' read -r id_1 desc id_2 signatur new_sig extra_info1 extra_info2 extra_info3; do
+    while IFS=';' read -r arch_sig desc id signatur new_sig extra_info1 extra_info2 extra_info3; do
         line_num=$((line_num + 1))
         
         # Skip empty or unchanged entries
