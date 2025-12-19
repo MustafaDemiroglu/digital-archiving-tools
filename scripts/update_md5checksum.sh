@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: update_md5checksum.sh (Version 8.0)
+# Script Name: update_md5checksum.sh 
+# Version 8.0
+# Author: Mustafa Demiroglu
 #
 # Description:
 #   This script updates MD5 checksum files by changing file paths and names
@@ -38,7 +40,6 @@ VERBOSE=false
 BASE_PATH=""
 SEARCH_SUBDIRS=false
 TOTAL_CHANGES=0
-PROCESSED_CHANGES=0
 
 # --- ARRAYS ---
 declare -a TERMINAL_LOG
@@ -200,7 +201,13 @@ build_new_filename() {
     fi
 }
 
-# Load CSV into associative arrays for O(1) lookups
+###############################################################################
+# Function: load_csv_instructions
+# Description:
+#   Load CSV file into memory for quick lookup
+#   For simple_rename: reads old_path,new_path format
+#   For path_update: reads src,dst,newname format
+###############################################################################
 load_csv_instructions() {
     local csv_file="$1"
     local csv_type="$2"
@@ -219,12 +226,12 @@ load_csv_instructions() {
     {
         read # Skip header
         while IFS= read -r line; do
-            line=$(echo "$line" | tr -d '\r')
+            line=$(echo "$line" | tr -d '\r') # Remove Windows line endings
             [ -z "$line" ] && continue
             
             line_count=$((line_count + 1))
             
-            if [ "$csv_type" = "simple_rename" ]; then
+            if [ "$csv_type" = "simple_rename" ]; then                 # Simple format: old_path,new_path or old_path<tab>new_path
                 IFS=$',;\t' read -r old_path new_path <<< "$line"
                 old_path=$(echo "$old_path" | xargs)
                 new_path=$(echo "$new_path" | xargs)
@@ -232,12 +239,12 @@ load_csv_instructions() {
                 # Debug output for troubleshooting
                 [ "$VERBOSE" = true ] && info "Parsing line $line_count: '$old_path' -> '$new_path'"
                 
-                if [ -n "$old_path" ] && [ -n "$new_path" ]; then
+                if [ -n "$old_path" ] && [ -n "$new_path" ]; then	    # Add to map if both values exist
                     PATH_MAP["$old_path"]="$new_path"
                 else
                     [ "$VERBOSE" = true ] && warning "Skipping invalid line $line_count: $line"
                 fi
-            else
+            else 														# Path update format: src,dst,newname
                 IFS=$',;\t' read -r src dst newname <<< "$line"
                 src=$(echo "$src" | xargs)
                 dst=$(echo "$dst" | xargs)
@@ -245,7 +252,7 @@ load_csv_instructions() {
                 
                 [ -z "$src" ] && continue
                 
-                # Check if this is a deletion operation
+                # Check if this is a deletion operation (empty dst and newname)
                 if [ -z "$dst" ] && [ -z "$newname" ]; then
                     DELETION_PATHS["$src"]=1
                 else
@@ -257,9 +264,13 @@ load_csv_instructions() {
     } < "$csv_file"
     
     info "Loaded $line_count CSV instructions"
-    info "Path updates: ${#PATH_MAP[@]}, Deletions: ${#DELETION_PATHS[@]}"
+	if [ "$csv_type" = "simple_rename" ]; then
+        info "Simple renames: ${#PATH_MAP[@]}"
+    else
+        info "Path updates: ${#PATH_MAP[@]}, Deletions: ${#DELETION_PATHS[@]}"
+    fi
 
-	# Debug: Show first few mappings if verbose
+	# Show first few mappings if verbose to a better debugging
     if [ "$VERBOSE" = true ] && [ ${#PATH_MAP[@]} -gt 0 ]; then
         info "First few path mappings:"
         local count=0
@@ -271,7 +282,15 @@ load_csv_instructions() {
     fi
 }
 
-# Single-pass processing of MD5 file
+###############################################################################
+# Function: process_renamed_files_csv
+# Description:
+#   Simple rename process for MD5 files
+#   Reads CSV: old_path,new_path
+#   Finds old_path in MD5 file
+#   Replaces with new_path
+#   Hash stays the same
+###############################################################################
 process_renamed_files_csv() {
     local md5_file="$1"
     local csv_file="$2"
@@ -292,7 +311,6 @@ process_renamed_files_csv() {
         success "Backup created: $backup_file"
     fi
     
-    PROCESSED_CHANGES=0
     TOTAL_CHANGES=0
     
     output_and_log "$(printf '=%.0s' {1..60})"
@@ -312,24 +330,31 @@ process_renamed_files_csv() {
             show_progress $line_num $total_lines
         fi
         
-        if [[ "$md5_line" =~ ^([a-f0-9A-F]{32})[[:space:]]+(.*[^[:space:]])$ ]]; then
+		# Parse MD5 line: <hash><space><path>
+		if [[ "$md5_line" =~ ^([a-f0-9A-F]{32})[[:space:]]+(.+)$ ]]; then	
             local hash="${BASH_REMATCH[1]}"
             local file_path="${BASH_REMATCH[2]}"
             
-            # Debug output
-            [ "$VERBOSE" = true ] && [ $((line_num % 1000)) -eq 0 ] 
-            
-            # O(1) lookup in associative array
+            # Check if this path is in our map            
             if [ -n "${PATH_MAP[$file_path]:-}" ]; then
                 local new_path="${PATH_MAP[$file_path]}"
+				
+				# Write hash + new path to temp file
                 echo "$hash  $new_path" >> "$temp_file"
+				
                 log_action "Renamed full path in MD5: $file_path → $new_path"
                 TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
+				
+				if [ "$VERBOSE" = true ]; then
+                    success "Line $line_num: $file_path → $new_path"
+                fi
+				
                 [ "$VERBOSE" = true ] && [ $((TOTAL_CHANGES % 100)) -eq 0 ] && info "Processed $TOTAL_CHANGES changes..."
-            else
+            
+			else 	# No match - keep original line
                 echo "$md5_line" >> "$temp_file"
             fi
-        else
+        else		# Not MD5 format - keep as is
             echo "$md5_line" >> "$temp_file"
         fi
     done < "$md5_file"
@@ -363,7 +388,6 @@ process_path_update_csv() {
         success "Backup created: $backup_file"
     fi
     
-    PROCESSED_CHANGES=0
     TOTAL_CHANGES=0
     
     output_and_log "$(printf '=%.0s' {1..60})"
@@ -612,7 +636,6 @@ process_all_md5_files() {
         
         # Reset counters for each file
         TOTAL_CHANGES=0
-        PROCESSED_CHANGES=0
         
         # Process based on selected type - USING FUNCTIONS
         if [ "$csv_processing_type" = "simple_rename" ]; then
