@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_cleanup_with_md5.sh
-# Version: 4.2
+# Version: 5.0
 # Author: Mustafa Demiroglu
 # Purpose     : 
 #   Move redundant files/folders (instead of deleting) into a temporary folder
@@ -14,7 +14,7 @@
 #
 # What it does:
 #   1. Finds lowest-level folders in current working directory.
-#   2. Compares each with /media/cepheus/<folder>.
+#   2. Compares each with /media/cepheus/<folder>, get possible cepheus paths (secure & non-secure tolerant).
 #   3. If all files compares -> move ALL files.
 #   4. If only some files are identical -> move those identical files.
 #   5. Moves are done to ./_tmp_cleanup/<folder>/.
@@ -41,13 +41,28 @@ get_md5() {
     md5sum "$f" | awk '{print $1}'
 }
 
+# Function: get possible cepheus paths (secure & non-secure tolerant)
+get_paths() {
+    local folder="$1"
+    local clean="$folder"
+
+    # Eğer kaynak secure ile başlıyorsa, secure/ kısmını kırp
+    clean="${clean#secure/}"
+
+    echo "/media/cepheus/$clean"
+    echo "/media/cepheus/secure/$clean"
+}
+
 # Function: process one folder
 process_folder() {
     local folder="$1"
     local folder_clean=$(trim "$folder")
-    local cepheus="/media/cepheus/$folder_clean"
-    
-    [[ ! -d "$cepheus" ]] && return
+	local cepheus_dirs=()
+	while IFS= read -r p; do
+		[[ -d "$p" ]] && cepheus_dirs+=("$p")
+	done < <(get_paths "$folder_clean")
+
+	[[ ${#cepheus_dirs[@]} -eq 0 ]] && return
     
     echo "Processing: $folder_clean" | tee -a "$LOG_FILE"
     
@@ -64,12 +79,14 @@ process_folder() {
     done < <(find "$folder_clean" -type f -print0)
     
     # Get MD5 hashes for cepheus files
-    while IFS= read -r -d '' f; do
-        local md5=$(get_md5 "$f")
-        if [[ -n "$md5" ]]; then
-            cepheus_md5_to_file["$md5"]="$f"
-        fi
-    done < <(find "$cepheus" -type f -print0)
+    for cepheus in "${cepheus_dirs[@]}"; do
+		while IFS= read -r -d '' f; do
+			local md5=$(get_md5 "$f")
+			if [[ -n "$md5" ]]; then
+				cepheus_md5_to_file["$md5"]="$f"
+			fi
+		done < <(find "$cepheus" -type f -print0)
+	done
     
     local total_source=${#source_md5_to_file[@]}
     local matched_count=0

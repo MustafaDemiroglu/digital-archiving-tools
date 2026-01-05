@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: update_md5checksum.sh 
-# Version 8.0
+# Version 8.1
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -277,7 +277,7 @@ load_csv_instructions() {
         for key in "${!PATH_MAP[@]}"; do
             info "  '$key' -> '${PATH_MAP[$key]}'"
             count=$((count + 1))
-            [ $count -ge 3 ] && break
+            [ $count -ge 10 ] && break
         done
     fi
 }
