@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : folder_audit_report_md5.sh
-# Version : 2.1
+# Version : 3.0
 # Author: Mustafa Demiroglu
 #
 # Purpose     : 
@@ -14,7 +14,7 @@
 # What it does:
 #   1. Finds all lowest-level (leaf) folders inside the working directory.
 #   2. For each folder, collects metadata (creation date, file count, file types, file creation dates).
-#   3. Checks whether the same folder exists in both `/media/cepheus` and `/media/archive/public/www`.
+#   3. Checks whether the same folder exists in both `/media/cepheus or /media/cepheus/secure` and `/media/archive/public/www`.
 #   4. Records detailed status for each location and adds an evaluation column with explanations about potential differences.
 #
 # Output:
@@ -26,6 +26,18 @@
 # Trim spaces, remove carriage returns, and drop leading ./
 trim() {
   echo -n "$1" | sed 's#^\./##;s/^[[:space:]]*//;s/[[:space:]]*$//;s/\r//g'
+}
+
+# Get possible Cepheus paths (secure / non-secure tolerant)
+get_cepheus_paths() {
+  local folder="$1"
+  local clean="$folder"
+
+  # Clean path if starts with secure
+  clean="${clean#secure/}"
+
+  echo "/media/cepheus/$clean"
+  echo "/media/cepheus/secure/$clean"
 }
 
 # Collect metadata for a given folder path
@@ -129,6 +141,12 @@ evaluate() {
   local meta_self="$6"
   local full_path_cepheus="$7"
 
+  # --- CASE 1 - KRITISCH: both secure + non-secure
+  if [[ "$status_cepheus" == "exist_both" ]]; then
+    echo "KRITISCH. Ordner ist sowohl im secure- als auch im non-secure-Bereich von Cepheus vorhanden. Dublettenrisiko. Manuelle Pruefung erforderlich."
+    return
+  fi
+  
   # compare metadata without creation dates (both folder and file dates)
   local meta_cepheus_nd
   local meta_self_nd
@@ -143,7 +161,7 @@ evaluate() {
   same_md5_samples=""
   
   # Evaluation process
-  # --- CASE 1: Cepheus does not exist ---
+  # --- CASE 2: Cepheus does not exist ---
   if [[ "$status_cepheus" == "not_exist" ]]; then
     if [[ "$status_nutzung" == "not_exist" ]]; then
       echo "Uploadbereit. weder in Cepheus noch in NetApp vorhanden"
@@ -153,7 +171,7 @@ evaluate() {
     return
   fi
   
-  # --- CASE 2: Cepheus exists (main check starts here) ---
+  # --- CASE 3: Cepheus exists (main check starts here) ---
   # Always perform md5 comparison for all Case 2 situations
   compare_md5 "$folder" "$full_path_cepheus"
   cmp_result=$?
@@ -229,14 +247,29 @@ for folder in "${folders[@]}"; do
   meta_self=$(get_metadata "$folder_clean")
 
   # Metadata Cepheus
-  full_path_cepheus="/media/cepheus/$folder_clean"
-  if [[ -d "$full_path_cepheus" ]]; then
-    status_cepheus="exist"
-    meta_cepheus=$(get_metadata "$full_path_cepheus")
-  else
-    status_cepheus="not_exist"
-    meta_cepheus=";;;"
-  fi
+  cepheus_matches=()
+  while IFS= read -r p; do
+    [[ -d "$p" ]] && cepheus_matches+=("$p")
+  done < <(get_cepheus_paths "$folder_clean")
+
+  case "${#cepheus_matches[@]}" in
+    0)
+      status_cepheus="not_exist"
+      meta_cepheus=";;;"
+      full_path_cepheus=""
+      ;;
+    1)
+      full_path_cepheus="${cepheus_matches[0]}"
+      meta_cepheus=$(get_metadata "$full_path_cepheus")
+      [[ "$full_path_cepheus" == */secure/* ]] && \
+        status_cepheus="exist_secure" || status_cepheus="exist_non_secure"
+      ;;
+    *)
+      status_cepheus="exist_both"
+      meta_cepheus=$(get_metadata "${cepheus_matches[0]}")
+      full_path_cepheus="${cepheus_matches[0]}"
+      ;;
+  esac
 
   # Metadata Nutzung
   full_path_nutzung="/media/archive/public/www/$folder_clean"
