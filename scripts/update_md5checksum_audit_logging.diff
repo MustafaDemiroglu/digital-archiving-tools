@@ -1,0 +1,87 @@
+--- a/update_md5checksum.sh
++++ b/update_md5checksum.sh
+@@ -45,6 +45,33 @@
+ # Log file initialization
+ LOG_FILE="md5_update_paths_output_$(date '+%Y%m%d_%H%M%S').log"
+
++# =========================
++# Audit-grade logging layer
++# =========================
++log_msg() {
++    local level="$1"; shift
++    local msg="$*"
++    local ts
++
++    ts="$(date '+%Y-%m-%d %H:%M:%S')"
++
++    # Write always to log file
++    printf '[%s] [%s] %s\n' "$ts" "$level" "$msg" >> "$LOG_FILE"
++
++    # And always to terminal
++    printf '[%s] [%s] %s\n' "$ts" "$level" "$msg"
++}
++
++log_info()  { log_msg "INFO"  "$@"; }
++log_warn()  { log_msg "WARN"  "$@"; }
++log_error() { log_msg "ERROR" "$@"; }
++log_ok()    { log_msg "OK"    "$@"; }
++
++# Audit counters
++SKIPPED_INVALID_MD5=0
++SKIPPED_CSV_NO_MATCH=0
++
+@@ -312,7 +339,7 @@
+-echo "INFO: Starting standard path update operation..."
++log_info "Starting standard path update operation..."
+
+@@ -318,7 +345,7 @@
+-echo "INFO: Loading CSV instructions into memory..."
++log_info "Loading CSV instructions into memory..."
+
+@@ -330,7 +357,7 @@
+-echo "INFO: Loaded $CSV_RULE_COUNT CSV instructions"
++log_info "Loaded $CSV_RULE_COUNT CSV instructions"
+
+@@ -372,6 +399,11 @@
+     for rule in "${CSV_RULES[@]}"; do
+         matched_count=0
++
++        # CSV rule matched nothing → WARN (audit)
++        if (( matched_count == 0 )); then
++            log_warn "CSV rule '$rule' matched 0 MD5 entries"
++            ((SKIPPED_CSV_NO_MATCH++))
++        fi
+     done
+
+@@ -421,7 +453,7 @@
+-echo "INFO: Starting  MD5 file processing..."
++log_info "Starting MD5 file processing..."
+
+@@ -440,6 +472,13 @@
+     while read -r checksum path; do
+         ((line_no++))
++
++        # Validate MD5 checksum format
++        if [[ ! "$checksum" =~ ^[a-fA-F0-9]{32}$ ]]; then
++            log_error "Invalid MD5 format (line $line_no): $checksum  $path"
++            ((SKIPPED_INVALID_MD5++))
++            continue
++        fi
+
+         TOTAL_MD5=$((TOTAL_MD5 + 1))
+
+@@ -515,7 +554,7 @@
+-echo "INFO: Dry-run mode: Would update $UPDATED_COUNT entries in MD5 file"
++log_info "Dry-run active: $UPDATED_COUNT entries would be updated (no changes written)"
+
+@@ -598,6 +637,17 @@
+-echo "SUCCESS: All operations completed!"
++log_ok "All operations completed!"
+
++log_info "================ Audit Summary ================"
++log_info "Total MD5 entries processed : $TOTAL_MD5"
++log_info "Updated successfully        : $UPDATED_COUNT"
++log_warn "Skipped (invalid MD5)       : $SKIPPED_INVALID_MD5"
++log_warn "Skipped (CSV no match)      : $SKIPPED_CSV_NO_MATCH"
++log_info "Deleted by CSV rules        : ${DELETED_COUNT:-0}"
++log_info "================================================"
