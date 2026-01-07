@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: update_md5checksum.sh 
-# Version 8.1
+# Version 9.0
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -39,7 +39,12 @@ DRY_RUN=false
 VERBOSE=false
 BASE_PATH=""
 SEARCH_SUBDIRS=false
+
+# --- AUDIT COUNTERS ---
 TOTAL_CHANGES=0
+TOTAL_MD5_LINES=0
+SKIPPED_NO_MATCH=0
+SKIPPED_INVALID_MD5=0
 
 # --- ARRAYS ---
 declare -a TERMINAL_LOG
@@ -280,6 +285,11 @@ load_csv_instructions() {
             [ $count -ge 10 ] && break
         done
     fi
+	
+	# Audit: CSV rules loaded but no MD5 processed yet
+    for src in "${!PATH_MAP[@]}"; do
+        log_action "CSV rule loaded: $src → ${PATH_MAP[$src]}" "INFO"
+    done
 }
 
 ###############################################################################
@@ -324,6 +334,7 @@ process_renamed_files_csv() {
     local line_num=0
     while IFS= read -r md5_line; do
         line_num=$((line_num + 1))
+		TOTAL_MD5_LINES=$((TOTAL_MD5_LINES + 1))
         
         # Show progress every 10000 lines
         if [ $((line_num % 10000)) -eq 0 ]; then
@@ -407,6 +418,7 @@ process_path_update_csv() {
     local line_num=0
     while IFS= read -r md5_line; do
         line_num=$((line_num + 1))
+		TOTAL_MD5_LINES=$((TOTAL_MD5_LINES + 1))
         
         # Show progress every 10000 lines
         if [ $((line_num % 10000)) -eq 0 ]; then
@@ -458,10 +470,14 @@ process_path_update_csv() {
             if [ "$matched" = false ]; then
                 # Keep original line unchanged
                 echo "$md5_line" >> "$temp_file"
+				SKIPPED_NO_MATCH=$((SKIPPED_NO_MATCH + 1))
+                log_action "Skipped (no CSV match): $file_path" "INFO"
             fi
         else
             # Keep non-MD5 lines unchanged
             echo "$md5_line" >> "$temp_file"
+			SKIPPED_INVALID_MD5=$((SKIPPED_INVALID_MD5 + 1))
+            log_action "Invalid MD5 line format (line $line_num): $md5_line" "ERROR"
         fi
     done < "$md5_file"
     
@@ -529,6 +545,12 @@ save_results() {
         echo
         echo "=== Operation Summary ==="
         printf "%s\n" "${LOG_ACTIONS[@]}"
+		echo
+        echo "=== Audit Summary ==="
+        echo "Total MD5 lines read        : $TOTAL_MD5_LINES"
+        echo "Total entries updated       : $TOTAL_CHANGES"
+        echo "Skipped (no CSV match)      : $SKIPPED_NO_MATCH"
+        echo "Skipped (invalid MD5 lines) : $SKIPPED_INVALID_MD5"
     } > "$output_file"
     
     success "Detailed report saved: $output_file"
