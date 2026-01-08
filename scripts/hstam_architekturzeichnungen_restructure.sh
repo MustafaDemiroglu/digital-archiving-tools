@@ -11,8 +11,8 @@
 #
 # Notes:
 #   - Manual check cases are separated
-#   - CSV parsing for correct column reading
-#   - Timestamp-based workdir to prevent conflicts
+#   - Fixed CSV parsing for correct column reading
+#   - Added timestamp-based workdir to prevent conflicts
 ###############################################################################
 
 set -euo pipefail
@@ -127,54 +127,57 @@ process_csv_transform() {
     local count_manual=0
     local line_num=0
 
-    {
-        read -r  # Skip header line
-        while IFS=';' read -r c1 c2 c3 c4 c5 c6 c7 rest; do
-            ((line_num++))
-            
-            # Clean Windows line endings
-            c1="${c1%$'\r'}"; c4="${c4%$'\r'}"; c5="${c5%$'\r'}"
-            c6="${c6%$'\r'}"; c7="${c7%$'\r'}"
-            
-            # Skip empty lines
-            [[ -z "$c1" && -z "$c4" && -z "$c5" ]] && continue
-            
-            # Check required columns (1, 4, 5 must be filled)
-            if [[ -z "$c1" || -z "$c4" || -z "$c5" ]]; then
-                [[ "$VERBOSE" -eq 1 ]] && echo "Line $line_num: Skipping - missing required columns"
-                continue
-            fi
+    while IFS=';' read -r c1 c2 c3 c4 c5 c6 c7 rest; do
+        ((line_num++))
+        
+        # Clean Windows line endings
+        c1="${c1%$'\r'}"; c4="${c4%$'\r'}"; c5="${c5%$'\r'}"
+        c6="${c6%$'\r'}"; c7="${c7%$'\r'}"
+        
+        # Skip empty lines or header-like lines
+        [[ -z "$c1" ]] && continue
+        
+        # Check if c4 (old_signatur) is filled
+        if [[ -z "$c4" ]]; then
+            [[ "$VERBOSE" -eq 1 ]] && echo "Line $line_num: Skipping - c4 (old_signatur) empty"
+            continue
+        fi
+        
+        # If c5 is empty, no change needed -> skip
+        if [[ -z "$c5" ]]; then
+            [[ "$VERBOSE" -eq 1 ]] && echo "Line $line_num: Skipping - c5 (new_signatur) empty, no change needed"
+            continue
+        fi
 
-            # Debug output
-            if [[ "$VERBOSE" -eq 1 ]]; then
-                echo "Line $line_num: c1=$c1, c4=$c4, c5=$c5, c6=${c6:-(empty)}, c7=${c7:-(empty)}"
-            fi
+        # Debug output
+        if [[ "$VERBOSE" -eq 1 ]]; then
+            echo "Line $line_num: c1=$c1, c4=$c4, c5=$c5, c6=${c6:-(empty)}, c7=${c7:-(empty)}"
+        fi
 
-            # Check if columns 6 or 7 have content -> manual review
-            if [[ -n "$c6" || -n "$c7" ]]; then
-                echo "$c1;$c4;$c5;extra description present (c6='$c6', c7='$c7')" >> "$CSV_MANUAL"
-                ((count_manual++))
-                log INFO "Manual review: $c1 (extra description in c6/c7)"
-                continue
-            fi
+        # Check if columns 6 or 7 have content -> manual review
+        if [[ -n "$c6" || -n "$c7" ]]; then
+            echo "$c1;$c4;$c5;extra description present (c6='$c6', c7='$c7')" >> "$CSV_MANUAL"
+            ((count_manual++))
+            log INFO "Manual review: $c1 (extra description in c6/c7)"
+            continue
+        fi
 
-            # Check if both old and new are "Karten" Bestand
-            if [[ "$c4" != Karten* || "$c5" != Karten* ]]; then
-                echo "$c1;$c4;$c5;different Bestand (not Karten)" >> "$CSV_MANUAL"
-                ((count_manual++))
-                log INFO "Manual review: $c1 (not Karten Bestand)"
-                continue
-            fi
+        # Check if both old and new are "Karten" Bestand
+        if [[ "$c4" != Karten* || "$c5" != Karten* ]]; then
+            echo "$c1;$c4;$c5;different Bestand (not Karten)" >> "$CSV_MANUAL"
+            ((count_manual++))
+            log INFO "Manual review: $c1 (not Karten Bestand)"
+            continue
+        fi
 
-            # Normalize signatures
-            old_norm=$(normalize_signature "$c4")
-            new_norm=$(normalize_signature "$c5")
+        # Normalize signatures
+        old_norm=$(normalize_signature "$c4")
+        new_norm=$(normalize_signature "$c5")
 
-            echo "$c1;$old_norm;$new_norm" >> "$CSV_PROCESS"
-            ((count_process++))
-            log INFO "To process: $c1 | $old_norm -> $new_norm"
-        done
-    } < "$CSV_INPUT"
+        echo "$c1;$old_norm;$new_norm" >> "$CSV_PROCESS"
+        ((count_process++))
+        log INFO "To process: $c1 | $old_norm -> $new_norm"
+    done < "$CSV_INPUT"
 
     progress "CSV transformation finished: $count_process to process, $count_manual for manual review"
     log SUCCESS "CSV transformation finished: $count_process to process, $count_manual manual"
