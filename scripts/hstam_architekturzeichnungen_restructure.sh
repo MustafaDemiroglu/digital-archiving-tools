@@ -128,7 +128,7 @@ process_csv_transform() {
     local line_num=0
 
     while IFS=';' read -r c1 c2 c3 c4 c5 c6 c7 rest; do
-        ((line_num++))
+        line_num=$((line_num + 1))
         
         # Clean Windows line endings
         c1="${c1%$'\r'}"; c4="${c4%$'\r'}"; c5="${c5%$'\r'}"
@@ -157,7 +157,7 @@ process_csv_transform() {
         # Check if columns 6 or 7 have content -> manual review
         if [[ -n "$c6" || -n "$c7" ]]; then
             echo "$c1;$c4;$c5;extra description present (c6='$c6', c7='$c7')" >> "$CSV_MANUAL"
-            ((count_manual++))
+            count_manual=$((count_manual + 1))
             log INFO "Manual review: $c1 (extra description in c6/c7)"
             continue
         fi
@@ -165,7 +165,7 @@ process_csv_transform() {
         # Check if both old and new are "Karten" Bestand
         if [[ "$c4" != Karten* || "$c5" != Karten* ]]; then
             echo "$c1;$c4;$c5;different Bestand (not Karten)" >> "$CSV_MANUAL"
-            ((count_manual++))
+            count_manual=$((count_manual + 1))
             log INFO "Manual review: $c1 (not Karten Bestand)"
             continue
         fi
@@ -175,7 +175,7 @@ process_csv_transform() {
         new_norm=$(normalize_signature "$c5")
 
         echo "$c1;$old_norm;$new_norm" >> "$CSV_PROCESS"
-        ((count_process++))
+        count_process=$((count_process + 1))
         log INFO "To process: $c1 | $old_norm -> $new_norm"
     done < "$CSV_INPUT"
 
@@ -201,7 +201,7 @@ process_validate_paths() {
         if [[ ! -d "${ARCH_ZEICH}/${a}" ]]; then
             echo "$a;$o;$n;architekturzeichnung not found" >> "$CSV_MANUAL"
             sed -i "\|^$a;|d" "$tmp"
-            ((count_invalid++))
+            count_invalid=$((count_invalid + 1))
             log WARN "Invalid: $a - architekturzeichnung not found"
             continue
         fi
@@ -209,7 +209,7 @@ process_validate_paths() {
         if [[ ! -d "${CEPH_KARTEN}/${o}" ]]; then
             echo "$a;$o;$n;old_path not found in cepheus" >> "$CSV_MANUAL"
             sed -i "\|^$a;|d" "$tmp"
-            ((count_invalid++))
+            count_invalid=$((count_invalid + 1))
             log WARN "Invalid: $a - old_path not found in cepheus: $o"
             continue
         fi
@@ -217,7 +217,7 @@ process_validate_paths() {
         if [[ ! -d "${ARCH_KARTEN}/${o}" ]]; then
             echo "$a;$o;$n;old_path not found in netapp" >> "$CSV_MANUAL"
             sed -i "\|^$a;|d" "$tmp"
-            ((count_invalid++))
+            count_invalid=$((count_invalid + 1))
             log WARN "Invalid: $a - old_path not found in netapp: $o"
             continue
         fi
@@ -225,12 +225,12 @@ process_validate_paths() {
         if [[ -d "${CEPH_KARTEN}/${n}" || -d "${ARCH_KARTEN}/${n}" ]]; then
             echo "$a;$o;$n;new_path already exists" >> "$CSV_MANUAL"
             sed -i "\|^$a;|d" "$tmp"
-            ((count_invalid++))
+            count_invalid=$((count_invalid + 1))
             log WARN "Invalid: $a - new_path already exists: $n"
             continue
         fi
         
-        ((count_valid++))
+        count_valid=$((count_valid + 1))
     done < "$CSV_PROCESS"
 
     mv "$tmp" "$CSV_PROCESS"
@@ -258,18 +258,18 @@ process_create_dirs() {
         else
             echo "$a;$o;$n;cannot create cepheus dir" >> "$CSV_MANUAL"
             sed -i "\|^$a;|d" "$tmp"
-            ((count_failed++))
+            count_failed=$((count_failed + 1))
             log ERROR "Failed to create cepheus dir: ${CEPH_KARTEN}/${n}"
             continue
         fi
 
         if fs mkdir -p "${ARCH_KARTEN}/${n}/thumbs"; then
             log INFO "Created netapp dir: ${ARCH_KARTEN}/${n}/thumbs"
-            ((count_created++))
+            count_created=$((count_created + 1))
         else
             echo "$a;$o;$n;cannot create netapp dir" >> "$CSV_MANUAL"
             sed -i "\|^$a;|d" "$tmp"
-            ((count_failed++))
+            count_failed=$((count_failed + 1))
             log ERROR "Failed to create netapp dir: ${ARCH_KARTEN}/${n}"
         fi
     done < "$CSV_PROCESS"
@@ -303,7 +303,7 @@ process_move_cepheus() {
                 [[ -f "$oldfile" ]] || continue
                 fs mv "$oldfile" "$dst_new/"
                 echo "$oldfile;${dst_new}/$(basename "$oldfile")" >> "$CSV_RENAMED"
-                ((count_moved++))
+                count_moved=$((count_moved + 1))
                 log INFO "Moved in cepheus: $oldfile -> $dst_new/"
             done
         done
@@ -335,7 +335,7 @@ process_move_netapp() {
             name="$(basename "${f%.*}")"
 
             if fs mv "$src_old"/"$name".* "$dst_new/" 2>/dev/null; then
-                ((count_moved++))
+                count_moved=$((count_moved + 1))
                 log INFO "Moved in netapp: $src_old/$name.* -> $dst_new/"
             fi
             
@@ -366,7 +366,7 @@ process_cleanup_dirs() {
             if [[ -d "$p" && -z "$(ls -A "$p" 2>/dev/null)" ]]; then
                 fs rmdir "$p"
                 echo "$p" >> "$CSV_DELETED"
-                ((count_deleted++))
+                count_deleted=$((count_deleted + 1))
                 log INFO "Deleted empty dir: $p"
             fi
         done
@@ -396,13 +396,13 @@ process_symlinks() {
         for f in "$target"/*; do
             [[ -f "$f" ]] || continue
             fs ln -s "/archive/www/hstam/karten/${n}/$(basename "$f")" "$linkdir/$(basename "$f")"
-            ((count_links++))
+            count_links=$((count_links + 1))
         done
 
         for f in "$target/thumbs"/*; do
             [[ -f "$f" ]] || continue
             fs ln -s "/archive/www/hstam/karten/${n}/thumbs/$(basename "$f")" "$linkdir/thumbs/$(basename "$f")"
-            ((count_links++))
+            count_links=$((count_links + 1))
         done
         
         log INFO "Recreated symlinks for: $a"
