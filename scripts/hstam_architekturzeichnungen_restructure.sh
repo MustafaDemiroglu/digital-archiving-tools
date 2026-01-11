@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name: hstam_architekturzeichnungen_restructure.sh
-# Version: 3.0
+# Version: 3.1
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 #
@@ -19,7 +19,8 @@
 #   - Symlink path handling
 ###############################################################################
 
-set -euo pipefail
+set -uo pipefail
+IFS=$'\n\t'
 
 ###############################################################################
 # ARGUMENTS
@@ -114,7 +115,9 @@ mkdir -p "$WORKDIR"
 log() {
     local level="$1"; shift
     echo "$(date '+%F %T') [$level] $*" >> "$LOGFILE"
-    [[ "$VERBOSE" -eq 1 ]] && echo "[$level] $*"
+    if [[ "${VERBOSE:-0}" -eq 1 ]]; then
+        echo "[$level] $*"
+    fi
 }
 
 progress() {
@@ -162,6 +165,20 @@ preflight_checks() {
     fi
     
     progress "Pre-flight checks completed"
+}
+
+###############################################################################
+# SAFE EXIT IF CSV EMPTY
+###############################################################################
+ensure_non_empty_process_csv() {
+    local lines
+    lines=$(wc -l < "$CSV_PROCESS" 2>/dev/null || echo 0)
+    if [[ "$lines" -le 1 ]]; then
+        progress "No valid entries to process – stopping pipeline gracefully"
+        log WARN "CSV_PROCESS contains no actionable rows"
+        return 1
+    fi
+    return 0
 }
 
 ###############################################################################
@@ -361,7 +378,7 @@ process_validate_paths() {
     local count_valid=0
     local count_invalid=0
 
-    while IFS=';' read -r a o n; do
+    while IFS=';' read -r a o n || [[ -n "${a:-}" ]]; do
         [[ "$a" == "architekturzeichnung" ]] && continue
 
         # Check architekturzeichnung directory
@@ -428,7 +445,7 @@ process_create_dirs() {
     local count_created=0
     local count_failed=0
 
-    while IFS=';' read -r a o n; do
+    while IFS=';' read -r a o n || [[ -n "${a:-}" ]]; do
         [[ "$a" == "architekturzeichnung" ]] && continue
 
         if fs_mkdir "${CEPH_KARTEN}/${n}"; then
@@ -473,7 +490,7 @@ process_move_cepheus() {
     local count_moved=0
     local count_files=0
 
-    while IFS=';' read -r a o n; do
+    while IFS=';' read -r a o n || [[ -n "${a:-}" ]]; do
         [[ "$a" == "architekturzeichnung" ]] && continue
         
         src_arch="${NETAPP_ARCH}/${a}"
@@ -535,7 +552,7 @@ process_move_netapp() {
     local count_moved=0
     local count_thumbs=0
 
-    while IFS=';' read -r a o n; do
+    while IFS=';' read -r a o n || [[ -n "${a:-}" ]]; do
         [[ "$a" == "architekturzeichnung" ]] && continue
 
         src_arch="${NETAPP_ARCH}/${a}"
@@ -717,6 +734,7 @@ main() {
     progress ""
     
     process_csv_transform
+	ensure_non_empty_process_csv || return 0
     process_validate_paths
     process_create_dirs
     process_move_cepheus
