@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: hstam_architekturzeichnungen_restructure.sh
-# Version: 3.3
+# Version: 3.3.1
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 #
@@ -69,7 +69,7 @@ CEPH_ROOT="/media/cepheus/hstam"
 CEPH_KARTEN="${CEPH_ROOT}/karten"
 
 # Symlink base path (configurable)
-SYMLINK_BASE="/archive/www/hstam/karten"
+SYMLINK_BASE="${NETAPP_ARCH}"
 
 WORKDIR="/tmp/hstam_arch_process_$(date '+%Y%m%d_%H%M%S')_$$"
 LOCKFILE="/tmp/hstam_arch_restructure.lock"
@@ -109,19 +109,16 @@ mkdir -p "$WORKDIR"
 # LOGGING
 ###############################################################################
 
-# Log dosyasına HER ZAMAN detaylı yaz
 log() {
     local level="$1"; shift
     echo "$(date '+%F %T') [$level] $*" >> "$LOGFILE"
 }
 
-# Progress - terminalde HER ZAMAN göster
 progress() {
     echo "→ $1"
     log INFO "$1"
 }
 
-# Verbose - sadece -v varsa terminalde göster, log'a HER ZAMAN yaz
 verbose_log() {
     log INFO "$@"
     if [[ "$VERBOSE" -eq 1 ]]; then
@@ -143,21 +140,6 @@ preflight_checks() {
             exit 1
         fi
     done
-
-    # Check disk space (at least 1GB free on both)
-    local netapp_free ceph_free
-    netapp_free=$(df -BG "$NETAPP_ROOT" | awk 'NR==2 {print $4}' | sed 's/G//')
-    ceph_free=$(df -BG "$CEPH_ROOT" | awk 'NR==2 {print $4}' | sed 's/G//')
-
-    if [[ "$netapp_free" -lt 1 ]]; then
-        echo "WARNING: Less than 1GB free on NetApp: ${netapp_free}GB"
-        log WARN "Low disk space on NetApp: ${netapp_free}GB"
-    fi
-
-    if [[ "$ceph_free" -lt 1 ]]; then
-        echo "WARNING: Less than 1GB free on Ceph: ${ceph_free}GB"
-        log WARN "Low disk space on Ceph: ${ceph_free}GB"
-    fi
 
     # Check write permissions
     if [[ "$DRY_RUN" -eq 0 ]]; then
@@ -396,8 +378,8 @@ process_validate_paths() {
             verbose_log "Invalid: $a - architekturzeichnung not found"
         fi
 
-        # For dry-run, skip physical path checks for new paths
-        if [[ "$DRY_RUN" -eq 0 && $remove_line -eq 0 ]]; then
+        # ALWAYS check old paths (even in dry-run, we're just reading)
+        if [[ $remove_line -eq 0 ]]; then
             # Check old path in cepheus
             if [[ ! -d "${CEPH_KARTEN}/${o}" ]]; then
                 echo "$a;$o;$n;old_path not found in cepheus" >> "$CSV_MANUAL"
@@ -421,9 +403,6 @@ process_validate_paths() {
                 count_invalid=$((count_invalid + 1))
                 verbose_log "Invalid: $a - new_path already exists: $n"
             fi
-        else
-            # In dry-run mode, just log the checks
-            verbose_log "DRY-RUN: Would check paths for $a: $o -> $n"
         fi
 
         if [[ $remove_line -eq 0 ]]; then
@@ -537,18 +516,6 @@ process_move_cepheus() {
         src_old="${CEPH_KARTEN}/${o}"
         dst_new="${CEPH_KARTEN}/${n}"
 
-        # Debug: Log the paths being checked
-        verbose_log "Checking paths - a: $a, old: $o, new: $n"
-        verbose_log "  src_arch: $src_arch"
-        verbose_log "  src_old: $src_old"
-        verbose_log "  dst_new: $dst_new"
-
-        # Check if old path exists
-        if [[ ! -d "$src_old" ]]; then
-            verbose_log "WARNING: Old cepheus path not found: $src_old (old_signature: $o)"
-            continue
-        fi
-
         # Count and process files (excluding thumbs directory)
         for f in "$src_arch"/*; do
             [[ "$f" == */thumbs ]] && continue
@@ -569,9 +536,9 @@ process_move_cepheus() {
                     echo "$oldfile;${dst_new}/$(basename "$oldfile")" >> "$CSV_RENAMED"
                     count_moved=$((count_moved + 1))
                     if [[ "$DRY_RUN" -eq 1 ]]; then
-                        verbose_log "Would move in cepheus: $oldfile -> $dst_new/"
+                        verbose_log "Would move in cepheus: $oldfile -> $dst_new/$(basename "$oldfile")"
                     else
-                        verbose_log "Moved in cepheus: $oldfile -> $dst_new/"
+                        verbose_log "Moved in cepheus: $oldfile -> $dst_new/$(basename "$oldfile")"
                     fi
                 else
                     if [[ "$DRY_RUN" -eq 0 ]]; then
@@ -616,18 +583,6 @@ process_move_netapp() {
         src_old="${NETAPP_KARTEN}/${o}"
         dst_new="${NETAPP_KARTEN}/${n}"
 
-        # Debug: Log the paths being checked
-        verbose_log "Checking paths - a: $a, old: $o, new: $n"
-        verbose_log "  src_arch: $src_arch"
-        verbose_log "  src_old: $src_old"
-        verbose_log "  dst_new: $dst_new"
-
-        # Check if old path exists
-        if [[ ! -d "$src_old" ]]; then
-            verbose_log "WARNING: Old netapp path not found: $src_old (old_signature: $o)"
-            continue
-        fi
-
         for f in "$src_arch"/*; do
             [[ "$f" == */thumbs ]] && continue
             [[ ! -f "$f" ]] && continue
@@ -642,9 +597,9 @@ process_move_netapp() {
                 if fs_mv "$oldfile" "$dst_new/" 2>/dev/null; then
                     count_moved=$((count_moved + 1))
                     if [[ "$DRY_RUN" -eq 1 ]]; then
-                        verbose_log "Would move in netapp: $oldfile -> $dst_new/"
+                        verbose_log "Would move in netapp: $oldfile -> $dst_new/$(basename "$oldfile")"
                     else
-                        verbose_log "Moved in netapp: $oldfile -> $dst_new/"
+                        verbose_log "Moved in netapp: $oldfile -> $dst_new/$(basename "$oldfile")"
                     fi
                 elif [[ "$DRY_RUN" -eq 0 ]]; then
                     log WARN "Could not move in netapp: $oldfile"
@@ -660,9 +615,9 @@ process_move_netapp() {
                     if fs_mv "$thumbfile" "$dst_new/thumbs/" 2>/dev/null; then
                         count_thumbs=$((count_thumbs + 1))
                         if [[ "$DRY_RUN" -eq 1 ]]; then
-                            verbose_log "Would move thumb in netapp: $thumbfile -> $dst_new/thumbs/"
+                            verbose_log "Would move thumb in netapp: $thumbfile -> $dst_new/thumbs/$(basename "$thumbfile")"
                         else
-                            verbose_log "Moved thumb in netapp: $thumbfile -> $dst_new/thumbs/"
+                            verbose_log "Moved thumb in netapp: $thumbfile -> $dst_new/thumbs/$(basename "$thumbfile")"
                         fi
                     elif [[ "$DRY_RUN" -eq 0 ]]; then
                         log WARN "Could not move thumb in netapp: $thumbfile"
@@ -771,11 +726,6 @@ process_symlinks() {
                 [[ ! -f "$f" ]] && continue
                 count_files_for_symlinks=$((count_files_for_symlinks + 1))
             done
-            for f in "$linkdir"/thumbs/*; do
-                [[ -L "$f" ]] && continue
-                [[ ! -f "$f" ]] && continue
-                count_files_for_symlinks=$((count_files_for_symlinks + 1))
-            done
             verbose_log "[DRY-RUN] Would recreate symlinks for: $a (estimated ~$count_files_for_symlinks symlinks)"
         else
             # Create new symlinks for main files
@@ -816,8 +766,8 @@ process_symlinks() {
     progress "Symlink recreation finished:"
     if [[ "$DRY_RUN" -eq 1 ]]; then
         echo "  - Would remove old symlinks: $count_removed"
-        echo "  - Would create new symlinks: ~$count_files_for_symlinks (in 461 folders → ~$count_files_for_symlinks symlinks estimated)"
-        log SUCCESS "Symlink recreation (DRY-RUN): $count_removed would be removed, ~$count_files_for_symlinks would be created"
+        echo "  - Would create new symlinks: in $count_files_for_symlinks folders → ~$count_removed symlinks estimated)"
+        log SUCCESS "Symlink recreation (DRY-RUN): $count_removed would be removed, ~$count_removed would be created"
     else
         echo "  - Old symlinks removed: $count_removed"
         echo "  - New symlinks created: $count_links"
