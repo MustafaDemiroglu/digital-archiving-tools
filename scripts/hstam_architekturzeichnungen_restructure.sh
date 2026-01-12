@@ -353,14 +353,15 @@ process_move_cepheus() {
         fi
 
         # Process main files (symlinks or regular files)
-        shopt -s nullglob  # Prevent literal * if no match
+        shopt -s nullglob
         for f in "$src_arch"/*; do
             verbose_log "Checking: $f"
             
             [[ "$f" == */thumbs ]] && { verbose_log "Skipping thumbs directory"; continue; }
             
-            if [[ ! -e "$f" ]]; then
-                verbose_log "Does not exist: $f"
+            # Check if it's a symlink OR a regular file
+            if [[ ! -L "$f" && ! -f "$f" ]]; then
+                verbose_log "Not a symlink or file: $f"
                 continue
             fi
 
@@ -370,7 +371,7 @@ process_move_cepheus() {
             local basename_full="$(basename "$f")"
             local name="${basename_full%.*}"
             
-            verbose_log "Processing file reference: $f (name: $name)"
+            verbose_log "Processing file reference: $f (basename: $basename_full, name: $name)"
 
             # Find matching files in old cepheus location
             local found_any=0
@@ -404,6 +405,92 @@ process_move_cepheus() {
 ###############################################################################
 # PROCESS 5: NETAPP MOVE
 ###############################################################################
+
+process_move_netapp() {
+    progress "Process 5: Move files in NetApp"
+
+    local count_moved=0 count_thumbs=0
+
+    while IFS=';' read -r a o n || [[ -n "${a:-}" ]]; do
+        [[ "$a" == "architekturzeichnung" ]] && continue
+
+        local src_arch="${NETAPP_ARCH}/${a}"
+        local src_old="${NETAPP_KARTEN}/${o}"
+        local dst_new="${NETAPP_KARTEN}/${n}"
+
+        verbose_log "Processing entry: a=$a, old=$o, new=$n"
+        verbose_log "Source arch dir: $src_arch"
+        verbose_log "Source old netapp: $src_old"
+        verbose_log "Destination netapp: $dst_new"
+
+        # Check if directories exist
+        if [[ ! -d "$src_arch" ]]; then
+            log ERROR "Directory does not exist: $src_arch"
+            continue
+        fi
+
+        # Process main files (symlinks or regular files)
+        shopt -s nullglob
+        for f in "$src_arch"/*; do
+            verbose_log "Checking: $f"
+            
+            [[ "$f" == */thumbs ]] && { verbose_log "Skipping thumbs directory"; continue; }
+            
+            # Check if it's a symlink OR a regular file
+            if [[ ! -L "$f" && ! -f "$f" ]]; then
+                verbose_log "Not a symlink or file: $f"
+                continue
+            fi
+
+            # Get basename without extension
+            local basename_full="$(basename "$f")"
+            local name="${basename_full%.*}"
+            
+            verbose_log "Processing file reference: $f (basename: $basename_full, name: $name)"
+
+            # Move main files from old netapp location
+            local found_main=0
+            for oldfile in "$src_old"/${name}.*; do
+                if [[ ! -f "$oldfile" ]]; then
+                    verbose_log "Not a file: $oldfile"
+                    continue
+                fi
+                found_main=1
+                verbose_log "Found matching file in netapp: $oldfile"
+                exec_cmd mv "$oldfile" "$dst_new/" 2>/dev/null && count_moved=$((count_moved + 1))
+            done
+
+            if [[ $found_main -eq 0 ]]; then
+                verbose_log "No matching main files found in $src_old for pattern: ${name}.*"
+            fi
+
+            # Move thumbnails from old netapp thumbs location
+            if [[ -d "$src_old/thumbs" ]]; then
+                local found_thumbs=0
+                for thumbfile in "$src_old"/thumbs/${name}.*; do
+                    if [[ ! -f "$thumbfile" ]]; then
+                        verbose_log "Not a thumb file: $thumbfile"
+                        continue
+                    fi
+                    found_thumbs=1
+                    verbose_log "Found matching thumb in netapp: $thumbfile"
+                    exec_cmd mv "$thumbfile" "$dst_new/thumbs/" 2>/dev/null && count_thumbs=$((count_thumbs + 1))
+                done
+
+                if [[ $found_thumbs -eq 0 ]]; then
+                    verbose_log "No matching thumb files found in $src_old/thumbs for pattern: ${name}.*"
+                fi
+            else
+                verbose_log "Thumbs directory does not exist: $src_old/thumbs"
+            fi
+        done
+        shopt -u nullglob
+
+    done < "$CSV_PROCESS"
+
+    progress "NetApp move finished: $count_moved files, $count_thumbs thumbs moved"
+    log SUCCESS "NetApp move: $count_moved files, $count_thumbs thumbs moved"
+}
 
 process_move_netapp() {
     progress "Process 5: Move files in NetApp"
