@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-
 ###############################################################################
 # Script Name: hstam_architekturzeichnungen_restructure.sh
-# Version: 3.4
+# Version: 3.3
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 #
@@ -110,16 +109,19 @@ mkdir -p "$WORKDIR"
 # LOGGING
 ###############################################################################
 
+# Log dosyasına HER ZAMAN detaylı yaz
 log() {
     local level="$1"; shift
     echo "$(date '+%F %T') [$level] $*" >> "$LOGFILE"
 }
 
+# Progress - terminalde HER ZAMAN göster
 progress() {
     echo "→ $1"
     log INFO "$1"
 }
 
+# Verbose - sadece -v varsa terminalde göster, log'a HER ZAMAN yaz
 verbose_log() {
     log INFO "$@"
     if [[ "$VERBOSE" -eq 1 ]]; then
@@ -535,9 +537,15 @@ process_move_cepheus() {
         src_old="${CEPH_KARTEN}/${o}"
         dst_new="${CEPH_KARTEN}/${n}"
 
+        # Debug: Log the paths being checked
+        verbose_log "Checking paths - a: $a, old: $o, new: $n"
+        verbose_log "  src_arch: $src_arch"
+        verbose_log "  src_old: $src_old"
+        verbose_log "  dst_new: $dst_new"
+
         # Check if old path exists
         if [[ ! -d "$src_old" ]]; then
-            verbose_log "WARNING: Old cepheus path not found: $src_old"
+            verbose_log "WARNING: Old cepheus path not found: $src_old (old_signature: $o)"
             continue
         fi
 
@@ -608,9 +616,15 @@ process_move_netapp() {
         src_old="${NETAPP_KARTEN}/${o}"
         dst_new="${NETAPP_KARTEN}/${n}"
 
+        # Debug: Log the paths being checked
+        verbose_log "Checking paths - a: $a, old: $o, new: $n"
+        verbose_log "  src_arch: $src_arch"
+        verbose_log "  src_old: $src_old"
+        verbose_log "  dst_new: $dst_new"
+
         # Check if old path exists
         if [[ ! -d "$src_old" ]]; then
-            verbose_log "WARNING: Old netapp path not found: $src_old"
+            verbose_log "WARNING: Old netapp path not found: $src_old (old_signature: $o)"
             continue
         fi
 
@@ -802,7 +816,7 @@ process_symlinks() {
     progress "Symlink recreation finished:"
     if [[ "$DRY_RUN" -eq 1 ]]; then
         echo "  - Would remove old symlinks: $count_removed"
-        echo "  - Would create new symlinks: ~$count_files_for_symlinks (estimated based on reference files)"
+        echo "  - Would create new symlinks: ~$count_files_for_symlinks (in 461 folders → ~$count_files_for_symlinks symlinks estimated)"
         log SUCCESS "Symlink recreation (DRY-RUN): $count_removed would be removed, ~$count_files_for_symlinks would be created"
     else
         echo "  - Old symlinks removed: $count_removed"
