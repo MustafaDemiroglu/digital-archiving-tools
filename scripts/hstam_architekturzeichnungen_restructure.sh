@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: hstam_architekturzeichnungen_restructure.sh
-# Version: 3.3.1
+# Version: 3.3.2
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 #
@@ -68,9 +68,6 @@ NETAPP_KARTEN="${NETAPP_ROOT}/karten"
 CEPH_ROOT="/media/cepheus/hstam"
 CEPH_KARTEN="${CEPH_ROOT}/karten"
 
-# Symlink base path (configurable)
-SYMLINK_BASE="${NETAPP_ARCH}"
-
 WORKDIR="/tmp/hstam_arch_process_$(date '+%Y%m%d_%H%M%S')_$$"
 LOCKFILE="/tmp/hstam_arch_restructure.lock"
 LOGFILE="${WORKDIR}/process.log"
@@ -81,7 +78,7 @@ CSV_RENAMED="${WORKDIR}/renamed_signaturen.csv"
 CSV_DELETED="${WORKDIR}/deleted_old_signaturen.csv"
 
 ###############################################################################
-# LOCK FILE MECHANISM
+# LOCK FILE MECHANISM & SETUP
 ###############################################################################
 
 acquire_lock() {
@@ -98,10 +95,6 @@ release_lock() {
 }
 
 trap release_lock EXIT INT TERM
-
-###############################################################################
-# SETUP
-###############################################################################
 
 mkdir -p "$WORKDIR"
 
@@ -155,7 +148,7 @@ preflight_checks() {
 }
 
 ###############################################################################
-# SAFE EXIT IF CSV EMPTY
+# UTILITIES
 ###############################################################################
 
 ensure_non_empty_process_csv() {
@@ -169,74 +162,17 @@ ensure_non_empty_process_csv() {
     return 0
 }
 
-###############################################################################
-# SAFE FS OPS (DRY-RUN WRAPPER)
-###############################################################################
-
-# Special mkdir wrapper for dry-run
-fs_mkdir() {
+# Unified dry-run aware command execution
+exec_cmd() {
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        verbose_log "[DRY-RUN] would execute: mkdir -p $*"
+        verbose_log "[DRY-RUN] would execute: $*"
         return 0
     else
-        verbose_log "Executing: mkdir -p $*"
-        mkdir -p "$@"
+        verbose_log "Executing: $*"
+        "$@"
         return $?
     fi
 }
-
-# Special mv wrapper for dry-run
-fs_mv() {
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        verbose_log "[DRY-RUN] would execute: mv $*"
-        return 0
-    else
-        verbose_log "Executing: mv $*"
-        mv "$@"
-        return $?
-    fi
-}
-
-# Special rm wrapper for dry-run
-fs_rm() {
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        verbose_log "[DRY-RUN] would execute: rm $*"
-        return 0
-    else
-        verbose_log "Executing: rm $*"
-        rm "$@"
-        return $?
-    fi
-}
-
-# Special ln wrapper for dry-run
-fs_ln() {
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        verbose_log "[DRY-RUN] would execute: ln $*"
-        return 0
-    else
-        verbose_log "Executing: ln $*"
-        ln "$@"
-        return $?
-    fi
-}
-
-# Special rmdir wrapper for dry-run
-fs_rmdir() {
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        verbose_log "[DRY-RUN] would execute: rmdir $*"
-        return 0
-    else
-        verbose_log "Executing: rmdir $*"
-        rmdir "$@"
-        return $?
-    fi
-}
-
-###############################################################################
-# NORMALIZE SIGNATURE
-# Karten P II 3614/3 -> p_ii_3614--3
-###############################################################################
 
 normalize_signature() {
     local s="$1"
@@ -255,31 +191,17 @@ process_csv_transform() {
     echo "architekturzeichnung;old_path;new_path" > "$CSV_PROCESS"
     echo "architekturzeichnung;old_path;new_path;reason" > "$CSV_MANUAL"
 
-    local count_process=0
-    local count_manual=0
-    local count_skipped=0
-    local line_num=0
-    local is_header=1
+    local count_process=0 count_manual=0 count_skipped=0 line_num=0 is_header=1
 
     while IFS= read -r line; do
         line_num=$((line_num + 1))
-
-        # Clean Windows line endings
         line="${line%$'\r'}"
-
-        # Split by semicolon into array
         IFS=';' read -ra cols <<< "$line"
 
-        # Get first 7 columns (pad with empty if less)
-        local c1="${cols[0]:-}"
-        local c2="${cols[1]:-}"
-        local c3="${cols[2]:-}"
-        local c4="${cols[3]:-}"
-        local c5="${cols[4]:-}"
-        local c6="${cols[5]:-}"
-        local c7="${cols[6]:-}"
+        local c1="${cols[0]:-}" c2="${cols[1]:-}" c3="${cols[2]:-}"
+        local c4="${cols[3]:-}" c5="${cols[4]:-}" c6="${cols[5]:-}" c7="${cols[6]:-}"
 
-        # Skip header line
+        # Skip header
         if [[ $is_header -eq 1 ]]; then
             if [[ "$c1" =~ ^[Aa]rchitekturzeichnung$ ]] || [[ "$c1" =~ ^[Cc]olumn ]] || [[ "$c1" =~ ^[Nn]ame ]]; then
                 verbose_log "Skipping header line: $c1"
@@ -289,66 +211,37 @@ process_csv_transform() {
             is_header=0
         fi
 
-        # Skip empty lines
-        if [[ -z "$c1" && -z "$c4" && -z "$c5" ]]; then
+        # Skip empty or incomplete lines
+        if [[ -z "$c1" || -z "$c4" || -z "$c5" ]]; then
             count_skipped=$((count_skipped + 1))
             continue
         fi
 
-        # Check if c1 (architekturzeichnung) is empty
-        if [[ -z "$c1" ]]; then
-            verbose_log "Line $line_num: Skipping - c1 (architekturzeichnung) empty"
-            count_skipped=$((count_skipped + 1))
-            continue
-        fi
+        verbose_log "Line $line_num: c1='$c1', c4='$c4', c5='$c5'"
 
-        # Check if c4 (old_signatur) is filled
-        if [[ -z "$c4" ]]; then
-            verbose_log "Line $line_num: Skipping - c4 (old_signatur) empty"
-            count_skipped=$((count_skipped + 1))
-            continue
-        fi
-
-        # If c5 is empty, no change needed -> skip
-        if [[ -z "$c5" ]]; then
-            verbose_log "Line $line_num: Skipping - c5 (new_signatur) empty, no change needed"
-            count_skipped=$((count_skipped + 1))
-            continue
-        fi
-
-        # Debug output
-        verbose_log "Line $line_num: c1='$c1', c4='$c4', c5='$c5', c6='${c6:-(empty)}', c7='${c7:-(empty)}'"
-
-        # Check if columns 6 or 7 have content -> manual review
+        # Manual review cases
         if [[ -n "$c6" || -n "$c7" ]]; then
-            echo "$c1;$c4;$c5;extra description present (c6='$c6', c7='$c7')" >> "$CSV_MANUAL"
+            echo "$c1;$c4;$c5;extra description present" >> "$CSV_MANUAL"
             count_manual=$((count_manual + 1))
-            verbose_log "Manual review: $c1 (extra description in c6/c7)"
             continue
         fi
 
-        # Check if both old and new are "Karten" Bestand
         if [[ "$c4" != Karten* || "$c5" != Karten* ]]; then
             echo "$c1;$c4;$c5;different Bestand (not Karten)" >> "$CSV_MANUAL"
             count_manual=$((count_manual + 1))
-            verbose_log "Manual review: $c1 (not Karten Bestand)"
             continue
         fi
 
-        # Normalize signatures
+        # Normalize and add to process list
         old_norm=$(normalize_signature "$c4")
         new_norm=$(normalize_signature "$c5")
-
         echo "$c1;$old_norm;$new_norm" >> "$CSV_PROCESS"
         count_process=$((count_process + 1))
         verbose_log "To process: $c1 | $old_norm -> $new_norm"
 
     done < "$CSV_INPUT"
 
-    progress "CSV transformation finished:"
-    echo "  - To process: $count_process"
-    echo "  - Manual review: $count_manual"
-    echo "  - Skipped: $count_skipped"
+    progress "CSV transformation finished: $count_process to process, $count_manual manual, $count_skipped skipped"
     log SUCCESS "CSV transformation: $count_process to process, $count_manual manual, $count_skipped skipped"
 }
 
@@ -359,66 +252,41 @@ process_csv_transform() {
 process_validate_paths() {
     progress "Process 2: Path validation"
 
-    tmp="${CSV_PROCESS}.tmp"
+    local tmp="${CSV_PROCESS}.tmp"
     cp "$CSV_PROCESS" "$tmp"
-
-    local count_valid=0
-    local count_invalid=0
+    local count_valid=0 count_invalid=0
 
     while IFS=';' read -r a o n || [[ -n "${a:-}" ]]; do
         [[ "$a" == "architekturzeichnung" ]] && continue
 
-        local remove_line=0
+        local invalid=0
 
-        # Check architekturzeichnung directory
+        # Check all required paths
         if [[ ! -d "${NETAPP_ARCH}/${a}" ]]; then
             echo "$a;$o;$n;architekturzeichnung not found" >> "$CSV_MANUAL"
-            remove_line=1
+            invalid=1
+        elif [[ ! -d "${CEPH_KARTEN}/${o}" ]]; then
+            echo "$a;$o;$n;old_path not found in cepheus" >> "$CSV_MANUAL"
+            invalid=1
+        elif [[ ! -d "${NETAPP_KARTEN}/${o}" ]]; then
+            echo "$a;$o;$n;old_path not found in netapp" >> "$CSV_MANUAL"
+            invalid=1
+        elif [[ -d "${CEPH_KARTEN}/${n}" || -d "${NETAPP_KARTEN}/${n}" ]]; then
+            echo "$a;$o;$n;new_path already exists" >> "$CSV_MANUAL"
+            invalid=1
+        fi
+
+        if [[ $invalid -eq 1 ]]; then
             count_invalid=$((count_invalid + 1))
-            verbose_log "Invalid: $a - architekturzeichnung not found"
-        fi
-
-        # ALWAYS check old paths (even in dry-run, we're just reading)
-        if [[ $remove_line -eq 0 ]]; then
-            # Check old path in cepheus
-            if [[ ! -d "${CEPH_KARTEN}/${o}" ]]; then
-                echo "$a;$o;$n;old_path not found in cepheus" >> "$CSV_MANUAL"
-                remove_line=1
-                count_invalid=$((count_invalid + 1))
-                verbose_log "Invalid: $a - old_path not found in cepheus: $o"
-            fi
-
-            # Check old path in netapp
-            if [[ $remove_line -eq 0 && ! -d "${NETAPP_KARTEN}/${o}" ]]; then
-                echo "$a;$o;$n;old_path not found in netapp" >> "$CSV_MANUAL"
-                remove_line=1
-                count_invalid=$((count_invalid + 1))
-                verbose_log "Invalid: $a - old_path not found in netapp: $o"
-            fi
-
-            # Check if new path already exists
-            if [[ $remove_line -eq 0 ]] && [[ -d "${CEPH_KARTEN}/${n}" || -d "${NETAPP_KARTEN}/${n}" ]]; then
-                echo "$a;$o;$n;new_path already exists" >> "$CSV_MANUAL"
-                remove_line=1
-                count_invalid=$((count_invalid + 1))
-                verbose_log "Invalid: $a - new_path already exists: $n"
-            fi
-        fi
-
-        if [[ $remove_line -eq 0 ]]; then
-            count_valid=$((count_valid + 1))
-        else
-            # Remove line from tmp
             grep -v "^${a};" "$tmp" > "${tmp}.filtered" 2>/dev/null && mv "${tmp}.filtered" "$tmp"
+        else
+            count_valid=$((count_valid + 1))
         fi
 
     done < "$CSV_PROCESS"
 
     mv "$tmp" "$CSV_PROCESS"
-
-    progress "Path validation finished:"
-    echo "  - Valid: $count_valid"
-    echo "  - Invalid: $count_invalid"
+    progress "Path validation finished: $count_valid valid, $count_invalid invalid"
     log SUCCESS "Path validation: $count_valid valid, $count_invalid invalid"
 }
 
@@ -429,67 +297,31 @@ process_validate_paths() {
 process_create_dirs() {
     progress "Process 3: Create new directories"
 
-    tmp="${CSV_PROCESS}.tmp"
+    local tmp="${CSV_PROCESS}.tmp"
     cp "$CSV_PROCESS" "$tmp"
-
-    local count_created=0
-    local count_failed=0
+    local count_created=0 count_failed=0
 
     while IFS=';' read -r a o n || [[ -n "${a:-}" ]]; do
         [[ "$a" == "architekturzeichnung" ]] && continue
 
         local failed=0
 
-        if fs_mkdir "${CEPH_KARTEN}/${n}"; then
-            if [[ "$DRY_RUN" -eq 1 ]]; then
-                verbose_log "Would create cepheus dir: ${CEPH_KARTEN}/${n}"
-            else
-                verbose_log "Created cepheus dir: ${CEPH_KARTEN}/${n}"
-            fi
-        else
-            if [[ "$DRY_RUN" -eq 0 ]]; then
-                echo "$a;$o;$n;cannot create cepheus dir" >> "$CSV_MANUAL"
-                failed=1
-                count_failed=$((count_failed + 1))
-                log ERROR "Failed to create cepheus dir: ${CEPH_KARTEN}/${n}"
-            fi
+        if ! exec_cmd mkdir -p "${CEPH_KARTEN}/${n}"; then
+            [[ "$DRY_RUN" -eq 0 ]] && { echo "$a;$o;$n;cannot create cepheus dir" >> "$CSV_MANUAL"; failed=1; count_failed=$((count_failed + 1)); }
         fi
 
-        if [[ $failed -eq 0 ]] && fs_mkdir "${NETAPP_KARTEN}/${n}/thumbs"; then
-            if [[ "$DRY_RUN" -eq 1 ]]; then
-                verbose_log "Would create netapp dir: ${NETAPP_KARTEN}/${n}/thumbs"
-            else
-                verbose_log "Created netapp dir: ${NETAPP_KARTEN}/${n}/thumbs"
-            fi
-            count_created=$((count_created + 1))
-        else
-            if [[ "$DRY_RUN" -eq 0 ]]; then
-                echo "$a;$o;$n;cannot create netapp dir" >> "$CSV_MANUAL"
-                failed=1
-                count_failed=$((count_failed + 1))
-                log ERROR "Failed to create netapp dir: ${NETAPP_KARTEN}/${n}"
-            fi
+        if [[ $failed -eq 0 ]] && ! exec_cmd mkdir -p "${NETAPP_KARTEN}/${n}/thumbs"; then
+            [[ "$DRY_RUN" -eq 0 ]] && { echo "$a;$o;$n;cannot create netapp dir" >> "$CSV_MANUAL"; failed=1; count_failed=$((count_failed + 1)); }
         fi
 
-        # Remove line if failed
-        if [[ $failed -eq 1 ]]; then
-            grep -v "^${a};" "$tmp" > "${tmp}.filtered" 2>/dev/null && mv "${tmp}.filtered" "$tmp"
-        fi
+        [[ $failed -eq 0 ]] && count_created=$((count_created + 1))
+        [[ $failed -eq 1 ]] && grep -v "^${a};" "$tmp" > "${tmp}.filtered" 2>/dev/null && mv "${tmp}.filtered" "$tmp"
 
     done < "$CSV_PROCESS"
 
     mv "$tmp" "$CSV_PROCESS"
-
-    progress "Directory creation finished:"
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        echo "  - Would create: $count_created"
-        echo "  - Would fail: $count_failed"
-        log SUCCESS "Directory creation (DRY-RUN): $count_created would be created, $count_failed would fail"
-    else
-        echo "  - Created: $count_created"
-        echo "  - Failed: $count_failed"
-        log SUCCESS "Directory creation: $count_created created, $count_failed failed"
-    fi
+    progress "Directory creation finished: $count_created created, $count_failed failed"
+    log SUCCESS "Directory creation: $count_created created, $count_failed failed"
 }
 
 ###############################################################################
@@ -499,71 +331,37 @@ process_create_dirs() {
 process_move_cepheus() {
     progress "Process 4: Move files in Cepheus"
 
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        echo "[DRY-RUN] This list shows what WOULD be renamed" > "$CSV_RENAMED"
-        echo "old_signatur_files;new_signatur_files" >> "$CSV_RENAMED"
-    else
-        echo "old_signatur_files;new_signatur_files" > "$CSV_RENAMED"
-    fi
-
-    local count_moved=0
-    local count_files=0
+    echo "old_signatur_files;new_signatur_files" > "$CSV_RENAMED"
+    local count_moved=0 count_files=0
 
     while IFS=';' read -r a o n || [[ -n "${a:-}" ]]; do
         [[ "$a" == "architekturzeichnung" ]] && continue
 
-        src_arch="${NETAPP_ARCH}/${a}"
-        src_old="${CEPH_KARTEN}/${o}"
-        dst_new="${CEPH_KARTEN}/${n}"
+        local src_arch="${NETAPP_ARCH}/${a}"
+        local src_old="${CEPH_KARTEN}/${o}"
+        local dst_new="${CEPH_KARTEN}/${n}"
 
-        # Count and process files (excluding thumbs directory)
         for f in "$src_arch"/*; do
             [[ "$f" == */thumbs ]] && continue
             [[ ! -f "$f" ]] && continue
 
             count_files=$((count_files + 1))
-            name="$(basename "${f%.*}")"
+            local name="$(basename "${f%.*}")"
 
-            # Find matching files in old location
-            local found=0
             for oldfile in "$src_old"/${name}.*; do
-                [[ ! -e "$oldfile" ]] && continue
                 [[ ! -f "$oldfile" ]] && continue
 
-                found=1
-
-                if fs_mv "$oldfile" "$dst_new/"; then
+                if exec_cmd mv "$oldfile" "$dst_new/"; then
                     echo "$oldfile;${dst_new}/$(basename "$oldfile")" >> "$CSV_RENAMED"
                     count_moved=$((count_moved + 1))
-                    if [[ "$DRY_RUN" -eq 1 ]]; then
-                        verbose_log "Would move in cepheus: $oldfile -> $dst_new/$(basename "$oldfile")"
-                    else
-                        verbose_log "Moved in cepheus: $oldfile -> $dst_new/$(basename "$oldfile")"
-                    fi
-                else
-                    if [[ "$DRY_RUN" -eq 0 ]]; then
-                        log ERROR "Failed to move in cepheus: $oldfile"
-                    fi
                 fi
             done
-
-            if [[ $found -eq 0 ]]; then
-                verbose_log "No matching file found in cepheus for: $name (reference: $f)"
-            fi
         done
 
     done < "$CSV_PROCESS"
 
-    progress "Cepheus move finished:"
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        echo "  - Reference files checked: $count_files"
-        echo "  - Would move: $count_moved files"
-        log SUCCESS "Cepheus move (DRY-RUN): $count_moved files would be moved from $count_files reference files"
-    else
-        echo "  - Reference files checked: $count_files"
-        echo "  - Files moved: $count_moved"
-        log SUCCESS "Cepheus move: $count_moved files moved from $count_files reference files"
-    fi
+    progress "Cepheus move finished: $count_moved files moved from $count_files reference files"
+    log SUCCESS "Cepheus move: $count_moved files moved"
 }
 
 ###############################################################################
@@ -573,71 +371,40 @@ process_move_cepheus() {
 process_move_netapp() {
     progress "Process 5: Move files in NetApp"
 
-    local count_moved=0
-    local count_thumbs=0
+    local count_moved=0 count_thumbs=0
 
     while IFS=';' read -r a o n || [[ -n "${a:-}" ]]; do
         [[ "$a" == "architekturzeichnung" ]] && continue
 
-        src_arch="${NETAPP_ARCH}/${a}"
-        src_old="${NETAPP_KARTEN}/${o}"
-        dst_new="${NETAPP_KARTEN}/${n}"
+        local src_arch="${NETAPP_ARCH}/${a}"
+        local src_old="${NETAPP_KARTEN}/${o}"
+        local dst_new="${NETAPP_KARTEN}/${n}"
 
         for f in "$src_arch"/*; do
             [[ "$f" == */thumbs ]] && continue
             [[ ! -f "$f" ]] && continue
 
-            name="$(basename "${f%.*}")"
+            local name="$(basename "${f%.*}")"
 
             # Move main files
             for oldfile in "$src_old"/${name}.*; do
-                [[ ! -e "$oldfile" ]] && continue
                 [[ ! -f "$oldfile" ]] && continue
-
-                if fs_mv "$oldfile" "$dst_new/" 2>/dev/null; then
-                    count_moved=$((count_moved + 1))
-                    if [[ "$DRY_RUN" -eq 1 ]]; then
-                        verbose_log "Would move in netapp: $oldfile -> $dst_new/$(basename "$oldfile")"
-                    else
-                        verbose_log "Moved in netapp: $oldfile -> $dst_new/$(basename "$oldfile")"
-                    fi
-                elif [[ "$DRY_RUN" -eq 0 ]]; then
-                    log WARN "Could not move in netapp: $oldfile"
-                fi
+                exec_cmd mv "$oldfile" "$dst_new/" 2>/dev/null && count_moved=$((count_moved + 1))
             done
 
             # Move thumbnails
             if [[ -d "$src_old/thumbs" ]]; then
                 for thumbfile in "$src_old"/thumbs/${name}.*; do
-                    [[ ! -e "$thumbfile" ]] && continue
                     [[ ! -f "$thumbfile" ]] && continue
-
-                    if fs_mv "$thumbfile" "$dst_new/thumbs/" 2>/dev/null; then
-                        count_thumbs=$((count_thumbs + 1))
-                        if [[ "$DRY_RUN" -eq 1 ]]; then
-                            verbose_log "Would move thumb in netapp: $thumbfile -> $dst_new/thumbs/$(basename "$thumbfile")"
-                        else
-                            verbose_log "Moved thumb in netapp: $thumbfile -> $dst_new/thumbs/$(basename "$thumbfile")"
-                        fi
-                    elif [[ "$DRY_RUN" -eq 0 ]]; then
-                        log WARN "Could not move thumb in netapp: $thumbfile"
-                    fi
+                    exec_cmd mv "$thumbfile" "$dst_new/thumbs/" 2>/dev/null && count_thumbs=$((count_thumbs + 1))
                 done
             fi
         done
 
     done < "$CSV_PROCESS"
 
-    progress "NetApp move finished:"
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        echo "  - Would move main files: $count_moved"
-        echo "  - Would move thumbnails: $count_thumbs"
-        log SUCCESS "NetApp move (DRY-RUN): $count_moved files, $count_thumbs thumbs would be moved"
-    else
-        echo "  - Main files moved: $count_moved"
-        echo "  - Thumbnails moved: $count_thumbs"
-        log SUCCESS "NetApp move: $count_moved files, $count_thumbs thumbs moved"
-    fi
+    progress "NetApp move finished: $count_moved files, $count_thumbs thumbs moved"
+    log SUCCESS "NetApp move: $count_moved files, $count_thumbs thumbs moved"
 }
 
 ###############################################################################
@@ -648,32 +415,23 @@ process_cleanup_dirs() {
     progress "Process 6: Remove empty old directories"
 
     echo "deleted_path" > "$CSV_DELETED"
-
     local count_deleted=0
 
     while IFS=';' read -r _ o _; do
         [[ "$o" == "old_path" ]] && continue
 
         for p in "${CEPH_KARTEN}/${o}" "${NETAPP_KARTEN}/${o}/thumbs" "${NETAPP_KARTEN}/${o}"; do
-            if [[ "$DRY_RUN" -eq 1 ]]; then
-                # In dry-run, just log what would be deleted
-                if [[ -d "$p" ]]; then
-                    verbose_log "Would check and possibly delete: $p"
+            if [[ -d "$p" ]]; then
+                if [[ "$DRY_RUN" -eq 1 ]]; then
+                    verbose_log "[DRY-RUN] would check and possibly delete: $p"
                     count_deleted=$((count_deleted + 1))
-                fi
-            else
-                # Only delete if directory exists and is empty
-                if [[ -d "$p" ]]; then
+                else
                     if [[ -z "$(ls -A "$p" 2>/dev/null)" ]]; then
-                        if fs_rmdir "$p"; then
+                        if rmdir "$p" 2>/dev/null; then
                             echo "$p" >> "$CSV_DELETED"
                             count_deleted=$((count_deleted + 1))
                             verbose_log "Deleted empty dir: $p"
-                        else
-                            log WARN "Could not delete dir: $p"
                         fi
-                    else
-                        verbose_log "Directory not empty, skipping: $p"
                     fi
                 fi
             fi
@@ -681,14 +439,8 @@ process_cleanup_dirs() {
 
     done < "$CSV_PROCESS"
 
-    progress "Cleanup finished:"
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        echo "  - Would remove: $count_deleted directories"
-        log SUCCESS "Cleanup (DRY-RUN): $count_deleted directories would be removed"
-    else
-        echo "  - Directories removed: $count_deleted"
-        log SUCCESS "Cleanup: $count_deleted directories removed"
-    fi
+    progress "Cleanup finished: $count_deleted directories removed"
+    log SUCCESS "Cleanup: $count_deleted directories removed"
 }
 
 ###############################################################################
@@ -698,81 +450,39 @@ process_cleanup_dirs() {
 process_symlinks() {
     progress "Process 7: Recreate symlinks"
 
-    local count_links=0
-    local count_removed=0
-    local count_files_for_symlinks=0
+    local count_links=0 count_removed=0
 
     while IFS=';' read -r a _ n; do
         [[ "$a" == "architekturzeichnung" ]] && continue
 
-        target="${NETAPP_KARTEN}/${n}"
-        linkdir="${NETAPP_ARCH}/${a}"
+        local target="${NETAPP_KARTEN}/${n}"
+        local linkdir="${NETAPP_ARCH}/${a}"
 
         # Remove old symlinks
         for old_link in "$linkdir"/* "$linkdir"/thumbs/*; do
-            [[ -L "$old_link" ]] || continue
-            if fs_rm -f "$old_link" 2>/dev/null; then
-                count_removed=$((count_removed + 1))
-                verbose_log "Would remove symlink: $old_link"
+            if [[ -L "$old_link" ]]; then
+                exec_cmd rm -f "$old_link" 2>/dev/null && count_removed=$((count_removed + 1))
             fi
         done
 
-        if [[ "$DRY_RUN" -eq 1 ]]; then
-            # In dry-run, we cannot count files in new location (doesn't exist yet)
-            # But we can estimate from architekturzeichnung directory
-            for f in "$linkdir"/*; do
-                [[ "$f" == */thumbs ]] && continue
-                [[ -L "$f" ]] && continue
-                [[ ! -f "$f" ]] && continue
-                count_files_for_symlinks=$((count_files_for_symlinks + 1))
-            done
-            verbose_log "[DRY-RUN] Would recreate symlinks for: $a (estimated ~$count_files_for_symlinks symlinks)"
-        else
+        if [[ "$DRY_RUN" -eq 0 ]]; then
             # Create new symlinks for main files
             for f in "$target"/*; do
-                [[ -f "$f" ]] || continue
-                
-                local symlink_target="${SYMLINK_BASE}/${n}/$(basename "$f")"
-                local symlink_path="$linkdir/$(basename "$f")"
-                
-                if fs_ln -s "$symlink_target" "$symlink_path"; then
-                    count_links=$((count_links + 1))
-                    verbose_log "Created symlink: $symlink_path -> $symlink_target"
-                else
-                    log ERROR "Failed to create symlink: $symlink_path"
-                fi
+                [[ ! -f "$f" ]] && continue
+                ln -s "${NETAPP_KARTEN}/${n}/$(basename "$f")" "$linkdir/$(basename "$f")" 2>/dev/null && count_links=$((count_links + 1))
             done
 
             # Create new symlinks for thumbnails
             for f in "$target/thumbs"/*; do
-                [[ -f "$f" ]] || continue
-                
-                local symlink_target="${SYMLINK_BASE}/${n}/thumbs/$(basename "$f")"
-                local symlink_path="$linkdir/thumbs/$(basename "$f")"
-                
-                if fs_ln -s "$symlink_target" "$symlink_path"; then
-                    count_links=$((count_links + 1))
-                    verbose_log "Created thumb symlink: $symlink_path -> $symlink_target"
-                else
-                    log ERROR "Failed to create thumb symlink: $symlink_path"
-                fi
+                [[ ! -f "$f" ]] && continue
+                ln -s "${NETAPP_KARTEN}/${n}/thumbs/$(basename "$f")" "$linkdir/thumbs/$(basename "$f")" 2>/dev/null && count_links=$((count_links + 1))
             done
-
-            verbose_log "Recreated symlinks for: $a ($count_links symlinks created)"
         fi
 
     done < "$CSV_PROCESS"
 
-    progress "Symlink recreation finished:"
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        echo "  - Would remove old symlinks: $count_removed"
-        echo "  - Would create new symlinks: in $count_files_for_symlinks folders → ~$count_removed symlinks estimated)"
-        log SUCCESS "Symlink recreation (DRY-RUN): $count_removed would be removed, ~$count_removed would be created"
-    else
-        echo "  - Old symlinks removed: $count_removed"
-        echo "  - New symlinks created: $count_links"
-        log SUCCESS "Symlink recreation: $count_removed removed, $count_links created"
-    fi
+    progress "Symlink recreation finished: $count_removed removed, $count_links created"
+    log SUCCESS "Symlink recreation: $count_removed removed, $count_links created"
 }
 
 ###############################################################################
@@ -780,9 +490,8 @@ process_symlinks() {
 ###############################################################################
 
 process_checksum() {
-    progress "Process 8: Checksum update"
+    progress "Process 8: Checksum update - to be implemented"
     log INFO "Checksum update will be implemented later"
-    progress "Checksum update - to be implemented"
 }
 
 ###############################################################################
@@ -796,18 +505,10 @@ main() {
     progress "HStAM Archive Restructuring Script"
     progress "========================================"
     progress "Working directory: $WORKDIR"
-    log INFO "Script started"
-    log INFO "CSV Input: $CSV_INPUT"
-    log INFO "Working directory: $WORKDIR"
+    log INFO "Script started - CSV Input: $CSV_INPUT"
 
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        progress "DRY-RUN MODE - No filesystem changes will be made"
-        log INFO "DRY-RUN enabled"
-    fi
-
-    if [[ "$VERBOSE" -eq 1 ]]; then
-        progress "Verbose mode enabled"
-    fi
+    [[ "$DRY_RUN" -eq 1 ]] && progress "DRY-RUN MODE - No filesystem changes will be made"
+    [[ "$VERBOSE" -eq 1 ]] && progress "Verbose mode enabled"
 
     preflight_checks
 
@@ -825,6 +526,13 @@ main() {
     process_symlinks
     process_checksum
 
+    # Summary
+    local proc_count manual_count renamed_count deleted_count
+    proc_count=$(wc -l < "$CSV_PROCESS" 2>/dev/null || echo "0")
+    manual_count=$(wc -l < "$CSV_MANUAL" 2>/dev/null || echo "0")
+    renamed_count=$(wc -l < "$CSV_RENAMED" 2>/dev/null || echo "0")
+    deleted_count=$(wc -l < "$CSV_DELETED" 2>/dev/null || echo "0")
+
     progress ""
     progress "========================================"
     progress "All processes finished successfully"
@@ -832,47 +540,22 @@ main() {
     progress ""
     progress "Results location: $WORKDIR"
     progress ""
-    progress "Output files:"
-    progress "  - Processing list: $CSV_PROCESS"
-    progress "  - Manual review: $CSV_MANUAL"
-    progress "  - Renamed files: $CSV_RENAMED"
-    progress "  - Deleted dirs: $CSV_DELETED"
-    progress "  - Log file: $LOGFILE"
-    progress ""
-
-    # Show file counts
-    local proc_count manual_count renamed_count deleted_count
-    proc_count=$(wc -l < "$CSV_PROCESS" 2>/dev/null || echo "0")
-    manual_count=$(wc -l < "$CSV_MANUAL" 2>/dev/null || echo "0")
-    renamed_count=$(wc -l < "$CSV_RENAMED" 2>/dev/null || echo "0")
-    deleted_count=$(wc -l < "$CSV_DELETED" 2>/dev/null || echo "0")
-
     progress "Summary:"
     progress "  - Entries processed: $((proc_count - 1))"
     progress "  - Manual review: $((manual_count - 1))"
-    
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        progress "  - Files that would be renamed: $((renamed_count - 2))"
-        progress "  - Dirs that would be deleted: $((deleted_count - 1))"
-    else
-        progress "  - Files renamed: $((renamed_count - 1))"
-        progress "  - Dirs deleted: $((deleted_count - 1))"
-    fi
+    progress "  - Files renamed: $((renamed_count - 1))"
+    progress "  - Dirs deleted: $((deleted_count - 1))"
 
-    if [[ "$DRY_RUN" -eq 1 ]]; then
+    [[ "$DRY_RUN" -eq 1 ]] && {
         progress ""
         progress "========================================"
-        progress "This was a DRY-RUN. No changes were made to the filesystem."
-        progress "Review the results and remove the -n flag to execute the actual operations."
+        progress "This was a DRY-RUN. No changes were made."
+        progress "Remove the -n flag to execute operations."
         progress "========================================"
-    fi
+    }
 
     log SUCCESS "Script completed successfully"
 }
-
-###############################################################################
-# EXECUTE MAIN
-###############################################################################
 
 main
 exit 0
