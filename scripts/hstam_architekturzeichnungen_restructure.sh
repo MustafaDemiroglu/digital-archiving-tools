@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name: hstam_architekturzeichnungen_restructure.sh
-# Version: 3.3
+# Version: 3.4
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 #
@@ -277,14 +277,25 @@ process_csv_transform() {
     local line_num=0
     local is_header=1
 
-    while IFS=';' read -r c1 c2 c3 c4 c5 c6 c7 rest; do
+    while IFS= read -r line; do
         line_num=$((line_num + 1))
 
         # Clean Windows line endings
-        c1="${c1%$'\r'}"; c2="${c2%$'\r'}"; c3="${c3%$'\r'}"
-        c4="${c4%$'\r'}"; c5="${c5%$'\r'}"; c6="${c6%$'\r'}"; c7="${c7%$'\r'}"
+        line="${line%$'\r'}"
 
-        # Skip header line (first non-empty line with expected column names)
+        # Split by semicolon into array
+        IFS=';' read -ra cols <<< "$line"
+
+        # Get first 7 columns (pad with empty if less)
+        local c1="${cols[0]:-}"
+        local c2="${cols[1]:-}"
+        local c3="${cols[2]:-}"
+        local c4="${cols[3]:-}"
+        local c5="${cols[4]:-}"
+        local c6="${cols[5]:-}"
+        local c7="${cols[6]:-}"
+
+        # Skip header line
         if [[ $is_header -eq 1 ]]; then
             if [[ "$c1" =~ ^[Aa]rchitekturzeichnung$ ]] || [[ "$c1" =~ ^[Cc]olumn ]] || [[ "$c1" =~ ^[Nn]ame ]]; then
                 verbose_log "Skipping header line: $c1"
@@ -373,49 +384,52 @@ process_validate_paths() {
     while IFS=';' read -r a o n || [[ -n "${a:-}" ]]; do
         [[ "$a" == "architekturzeichnung" ]] && continue
 
+        local remove_line=0
+
         # Check architekturzeichnung directory
         if [[ ! -d "${NETAPP_ARCH}/${a}" ]]; then
             echo "$a;$o;$n;architekturzeichnung not found" >> "$CSV_MANUAL"
-            sed -i "\|^${a};|d" "$tmp" 2>/dev/null || grep -v "^${a};" "$tmp" > "${tmp}.new" && mv "${tmp}.new" "$tmp"
+            remove_line=1
             count_invalid=$((count_invalid + 1))
             verbose_log "Invalid: $a - architekturzeichnung not found"
-            continue
         fi
 
         # For dry-run, skip physical path checks for new paths
-        if [[ "$DRY_RUN" -eq 0 ]]; then
+        if [[ "$DRY_RUN" -eq 0 && $remove_line -eq 0 ]]; then
             # Check old path in cepheus
             if [[ ! -d "${CEPH_KARTEN}/${o}" ]]; then
                 echo "$a;$o;$n;old_path not found in cepheus" >> "$CSV_MANUAL"
-                sed -i "\|^${a};|d" "$tmp" 2>/dev/null || grep -v "^${a};" "$tmp" > "${tmp}.new" && mv "${tmp}.new" "$tmp"
+                remove_line=1
                 count_invalid=$((count_invalid + 1))
                 verbose_log "Invalid: $a - old_path not found in cepheus: $o"
-                continue
             fi
 
             # Check old path in netapp
-            if [[ ! -d "${NETAPP_KARTEN}/${o}" ]]; then
+            if [[ $remove_line -eq 0 && ! -d "${NETAPP_KARTEN}/${o}" ]]; then
                 echo "$a;$o;$n;old_path not found in netapp" >> "$CSV_MANUAL"
-                sed -i "\|^${a};|d" "$tmp" 2>/dev/null || grep -v "^${a};" "$tmp" > "${tmp}.new" && mv "${tmp}.new" "$tmp"
+                remove_line=1
                 count_invalid=$((count_invalid + 1))
                 verbose_log "Invalid: $a - old_path not found in netapp: $o"
-                continue
             fi
 
             # Check if new path already exists
-            if [[ -d "${CEPH_KARTEN}/${n}" || -d "${NETAPP_KARTEN}/${n}" ]]; then
+            if [[ $remove_line -eq 0 ]] && [[ -d "${CEPH_KARTEN}/${n}" || -d "${NETAPP_KARTEN}/${n}" ]]; then
                 echo "$a;$o;$n;new_path already exists" >> "$CSV_MANUAL"
-                sed -i "\|^${a};|d" "$tmp" 2>/dev/null || grep -v "^${a};" "$tmp" > "${tmp}.new" && mv "${tmp}.new" "$tmp"
+                remove_line=1
                 count_invalid=$((count_invalid + 1))
                 verbose_log "Invalid: $a - new_path already exists: $n"
-                continue
             fi
         else
             # In dry-run mode, just log the checks
             verbose_log "DRY-RUN: Would check paths for $a: $o -> $n"
         fi
 
-        count_valid=$((count_valid + 1))
+        if [[ $remove_line -eq 0 ]]; then
+            count_valid=$((count_valid + 1))
+        else
+            # Remove line from tmp
+            grep -v "^${a};" "$tmp" > "${tmp}.filtered" 2>/dev/null && mv "${tmp}.filtered" "$tmp"
+        fi
 
     done < "$CSV_PROCESS"
 
@@ -443,6 +457,8 @@ process_create_dirs() {
     while IFS=';' read -r a o n || [[ -n "${a:-}" ]]; do
         [[ "$a" == "architekturzeichnung" ]] && continue
 
+        local failed=0
+
         if fs_mkdir "${CEPH_KARTEN}/${n}"; then
             if [[ "$DRY_RUN" -eq 1 ]]; then
                 verbose_log "Would create cepheus dir: ${CEPH_KARTEN}/${n}"
@@ -452,14 +468,13 @@ process_create_dirs() {
         else
             if [[ "$DRY_RUN" -eq 0 ]]; then
                 echo "$a;$o;$n;cannot create cepheus dir" >> "$CSV_MANUAL"
-                sed -i "\|^${a};|d" "$tmp" 2>/dev/null || grep -v "^${a};" "$tmp" > "${tmp}.new" && mv "${tmp}.new" "$tmp"
+                failed=1
                 count_failed=$((count_failed + 1))
                 log ERROR "Failed to create cepheus dir: ${CEPH_KARTEN}/${n}"
-                continue
             fi
         fi
 
-        if fs_mkdir "${NETAPP_KARTEN}/${n}/thumbs"; then
+        if [[ $failed -eq 0 ]] && fs_mkdir "${NETAPP_KARTEN}/${n}/thumbs"; then
             if [[ "$DRY_RUN" -eq 1 ]]; then
                 verbose_log "Would create netapp dir: ${NETAPP_KARTEN}/${n}/thumbs"
             else
@@ -469,10 +484,15 @@ process_create_dirs() {
         else
             if [[ "$DRY_RUN" -eq 0 ]]; then
                 echo "$a;$o;$n;cannot create netapp dir" >> "$CSV_MANUAL"
-                sed -i "\|^${a};|d" "$tmp" 2>/dev/null || grep -v "^${a};" "$tmp" > "${tmp}.new" && mv "${tmp}.new" "$tmp"
+                failed=1
                 count_failed=$((count_failed + 1))
                 log ERROR "Failed to create netapp dir: ${NETAPP_KARTEN}/${n}"
             fi
+        fi
+
+        # Remove line if failed
+        if [[ $failed -eq 1 ]]; then
+            grep -v "^${a};" "$tmp" > "${tmp}.filtered" 2>/dev/null && mv "${tmp}.filtered" "$tmp"
         fi
 
     done < "$CSV_PROCESS"
@@ -499,8 +519,8 @@ process_move_cepheus() {
     progress "Process 4: Move files in Cepheus"
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        echo "architekturzeichnung;old_signatur_files;new_signatur_files;note" > "$CSV_RENAMED"
-        echo "[DRY-RUN] This list shows what WOULD be renamed" >> "$CSV_RENAMED"
+        echo "[DRY-RUN] This list shows what WOULD be renamed" > "$CSV_RENAMED"
+        echo "old_signatur_files;new_signatur_files" >> "$CSV_RENAMED"
     else
         echo "old_signatur_files;new_signatur_files" > "$CSV_RENAMED"
     fi
@@ -515,39 +535,36 @@ process_move_cepheus() {
         src_old="${CEPH_KARTEN}/${o}"
         dst_new="${CEPH_KARTEN}/${n}"
 
-        # Count files first (excluding thumbs directory)
+        # Check if old path exists
+        if [[ ! -d "$src_old" ]]; then
+            verbose_log "WARNING: Old cepheus path not found: $src_old"
+            continue
+        fi
+
+        # Count and process files (excluding thumbs directory)
         for f in "$src_arch"/*; do
             [[ "$f" == */thumbs ]] && continue
-            [[ "$f" == */thumbs/* ]] && continue
             [[ ! -f "$f" ]] && continue
+
             count_files=$((count_files + 1))
-        done
-
-        for f in "$src_arch"/*; do
-            [[ "$f" == */thumbs ]] && continue
-            [[ "$f" == */thumbs/* ]] && continue
-            [[ ! -f "$f" ]] && continue
-
             name="$(basename "${f%.*}")"
 
             # Find matching files in old location
             local found=0
             for oldfile in "$src_old"/${name}.*; do
-                # Check if glob matched anything
                 [[ ! -e "$oldfile" ]] && continue
                 [[ ! -f "$oldfile" ]] && continue
 
                 found=1
 
                 if fs_mv "$oldfile" "$dst_new/"; then
+                    echo "$oldfile;${dst_new}/$(basename "$oldfile")" >> "$CSV_RENAMED"
+                    count_moved=$((count_moved + 1))
                     if [[ "$DRY_RUN" -eq 1 ]]; then
-                        echo "$a;$oldfile;${dst_new}/$(basename "$oldfile");would move" >> "$CSV_RENAMED"
                         verbose_log "Would move in cepheus: $oldfile -> $dst_new/"
                     else
-                        echo "$oldfile;${dst_new}/$(basename "$oldfile")" >> "$CSV_RENAMED"
                         verbose_log "Moved in cepheus: $oldfile -> $dst_new/"
                     fi
-                    count_moved=$((count_moved + 1))
                 else
                     if [[ "$DRY_RUN" -eq 0 ]]; then
                         log ERROR "Failed to move in cepheus: $oldfile"
@@ -556,7 +573,7 @@ process_move_cepheus() {
             done
 
             if [[ $found -eq 0 ]]; then
-                verbose_log "No matching file found in cepheus for: $name"
+                verbose_log "No matching file found in cepheus for: $name (reference: $f)"
             fi
         done
 
@@ -591,9 +608,14 @@ process_move_netapp() {
         src_old="${NETAPP_KARTEN}/${o}"
         dst_new="${NETAPP_KARTEN}/${n}"
 
+        # Check if old path exists
+        if [[ ! -d "$src_old" ]]; then
+            verbose_log "WARNING: Old netapp path not found: $src_old"
+            continue
+        fi
+
         for f in "$src_arch"/*; do
             [[ "$f" == */thumbs ]] && continue
-            [[ "$f" == */thumbs/* ]] && continue
             [[ ! -f "$f" ]] && continue
 
             name="$(basename "${f%.*}")"
@@ -616,21 +638,23 @@ process_move_netapp() {
             done
 
             # Move thumbnails
-            for thumbfile in "$src_old"/thumbs/${name}.*; do
-                [[ ! -e "$thumbfile" ]] && continue
-                [[ ! -f "$thumbfile" ]] && continue
+            if [[ -d "$src_old/thumbs" ]]; then
+                for thumbfile in "$src_old"/thumbs/${name}.*; do
+                    [[ ! -e "$thumbfile" ]] && continue
+                    [[ ! -f "$thumbfile" ]] && continue
 
-                if fs_mv "$thumbfile" "$dst_new/thumbs/" 2>/dev/null; then
-                    count_thumbs=$((count_thumbs + 1))
-                    if [[ "$DRY_RUN" -eq 1 ]]; then
-                        verbose_log "Would move thumb in netapp: $thumbfile -> $dst_new/thumbs/"
-                    else
-                        verbose_log "Moved thumb in netapp: $thumbfile -> $dst_new/thumbs/"
+                    if fs_mv "$thumbfile" "$dst_new/thumbs/" 2>/dev/null; then
+                        count_thumbs=$((count_thumbs + 1))
+                        if [[ "$DRY_RUN" -eq 1 ]]; then
+                            verbose_log "Would move thumb in netapp: $thumbfile -> $dst_new/thumbs/"
+                        else
+                            verbose_log "Moved thumb in netapp: $thumbfile -> $dst_new/thumbs/"
+                        fi
+                    elif [[ "$DRY_RUN" -eq 0 ]]; then
+                        log WARN "Could not move thumb in netapp: $thumbfile"
                     fi
-                elif [[ "$DRY_RUN" -eq 0 ]]; then
-                    log WARN "Could not move thumb in netapp: $thumbfile"
-                fi
-            done
+                done
+            fi
         done
 
     done < "$CSV_PROCESS"
@@ -707,6 +731,7 @@ process_symlinks() {
 
     local count_links=0
     local count_removed=0
+    local count_files_for_symlinks=0
 
     while IFS=';' read -r a _ n; do
         [[ "$a" == "architekturzeichnung" ]] && continue
@@ -719,60 +744,66 @@ process_symlinks() {
             [[ -L "$old_link" ]] || continue
             if fs_rm -f "$old_link" 2>/dev/null; then
                 count_removed=$((count_removed + 1))
+                verbose_log "Would remove symlink: $old_link"
             fi
         done
 
-        # Create new symlinks for main files
-        for f in "$target"/*; do
-            [[ -f "$f" ]] || continue
-            
-            local symlink_target="${SYMLINK_BASE}/${n}/$(basename "$f")"
-            local symlink_path="$linkdir/$(basename "$f")"
-            
-            if fs_ln -s "$symlink_target" "$symlink_path"; then
-                count_links=$((count_links + 1))
-                if [[ "$DRY_RUN" -eq 1 ]]; then
-                    verbose_log "Would create symlink: $symlink_path -> $symlink_target"
-                else
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            # In dry-run, we cannot count files in new location (doesn't exist yet)
+            # But we can estimate from architekturzeichnung directory
+            for f in "$linkdir"/*; do
+                [[ "$f" == */thumbs ]] && continue
+                [[ -L "$f" ]] && continue
+                [[ ! -f "$f" ]] && continue
+                count_files_for_symlinks=$((count_files_for_symlinks + 1))
+            done
+            for f in "$linkdir"/thumbs/*; do
+                [[ -L "$f" ]] && continue
+                [[ ! -f "$f" ]] && continue
+                count_files_for_symlinks=$((count_files_for_symlinks + 1))
+            done
+            verbose_log "[DRY-RUN] Would recreate symlinks for: $a (estimated ~$count_files_for_symlinks symlinks)"
+        else
+            # Create new symlinks for main files
+            for f in "$target"/*; do
+                [[ -f "$f" ]] || continue
+                
+                local symlink_target="${SYMLINK_BASE}/${n}/$(basename "$f")"
+                local symlink_path="$linkdir/$(basename "$f")"
+                
+                if fs_ln -s "$symlink_target" "$symlink_path"; then
+                    count_links=$((count_links + 1))
                     verbose_log "Created symlink: $symlink_path -> $symlink_target"
-                fi
-            else
-                if [[ "$DRY_RUN" -eq 0 ]]; then
+                else
                     log ERROR "Failed to create symlink: $symlink_path"
                 fi
-            fi
-        done
+            done
 
-        # Create new symlinks for thumbnails
-        for f in "$target/thumbs"/*; do
-            [[ -f "$f" ]] || continue
-            
-            local symlink_target="${SYMLINK_BASE}/${n}/thumbs/$(basename "$f")"
-            local symlink_path="$linkdir/thumbs/$(basename "$f")"
-            
-            if fs_ln -s "$symlink_target" "$symlink_path"; then
-                count_links=$((count_links + 1))
-                if [[ "$DRY_RUN" -eq 1 ]]; then
-                    verbose_log "Would create thumb symlink: $symlink_path -> $symlink_target"
-                else
+            # Create new symlinks for thumbnails
+            for f in "$target/thumbs"/*; do
+                [[ -f "$f" ]] || continue
+                
+                local symlink_target="${SYMLINK_BASE}/${n}/thumbs/$(basename "$f")"
+                local symlink_path="$linkdir/thumbs/$(basename "$f")"
+                
+                if fs_ln -s "$symlink_target" "$symlink_path"; then
+                    count_links=$((count_links + 1))
                     verbose_log "Created thumb symlink: $symlink_path -> $symlink_target"
-                fi
-            else
-                if [[ "$DRY_RUN" -eq 0 ]]; then
+                else
                     log ERROR "Failed to create thumb symlink: $symlink_path"
                 fi
-            fi
-        done
+            done
 
-        verbose_log "Recreated symlinks for: $a"
+            verbose_log "Recreated symlinks for: $a ($count_links symlinks created)"
+        fi
 
     done < "$CSV_PROCESS"
 
     progress "Symlink recreation finished:"
     if [[ "$DRY_RUN" -eq 1 ]]; then
         echo "  - Would remove old symlinks: $count_removed"
-        echo "  - Would create new symlinks: $count_links"
-        log SUCCESS "Symlink recreation (DRY-RUN): $count_removed would be removed, $count_links would be created"
+        echo "  - Would create new symlinks: ~$count_files_for_symlinks (estimated based on reference files)"
+        log SUCCESS "Symlink recreation (DRY-RUN): $count_removed would be removed, ~$count_files_for_symlinks would be created"
     else
         echo "  - Old symlinks removed: $count_removed"
         echo "  - New symlinks created: $count_links"
