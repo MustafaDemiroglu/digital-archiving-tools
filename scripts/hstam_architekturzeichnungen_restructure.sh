@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: hstam_architekturzeichnungen_restructure.sh
-# Version: 3.3.2
+# Version: 3.3.3
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 #
@@ -341,16 +341,25 @@ process_move_cepheus() {
         local src_old="${CEPH_KARTEN}/${o}"
         local dst_new="${CEPH_KARTEN}/${n}"
 
+        # Process main files (symlinks or regular files)
         for f in "$src_arch"/*; do
             [[ "$f" == */thumbs ]] && continue
-            [[ ! -f "$f" ]] && continue
+            [[ ! -e "$f" ]] && continue  # exists check (works for symlinks too)
 
             count_files=$((count_files + 1))
-            local name="$(basename "${f%.*}")"
+            
+            # Get basename without extension
+            local basename_full="$(basename "$f")"
+            local name="${basename_full%.*}"
+            
+            verbose_log "Processing file reference: $f (name: $name)"
 
+            # Find matching files in old cepheus location
             for oldfile in "$src_old"/${name}.*; do
                 [[ ! -f "$oldfile" ]] && continue
 
+                verbose_log "Found matching file in cepheus: $oldfile"
+                
                 if exec_cmd mv "$oldfile" "$dst_new/"; then
                     echo "$oldfile;${dst_new}/$(basename "$oldfile")" >> "$CSV_RENAMED"
                     count_moved=$((count_moved + 1))
@@ -380,22 +389,29 @@ process_move_netapp() {
         local src_old="${NETAPP_KARTEN}/${o}"
         local dst_new="${NETAPP_KARTEN}/${n}"
 
+        # Process main files (symlinks or regular files)
         for f in "$src_arch"/*; do
             [[ "$f" == */thumbs ]] && continue
-            [[ ! -f "$f" ]] && continue
+            [[ ! -e "$f" ]] && continue  # exists check (works for symlinks too)
 
-            local name="$(basename "${f%.*}")"
+            # Get basename without extension
+            local basename_full="$(basename "$f")"
+            local name="${basename_full%.*}"
+            
+            verbose_log "Processing file reference: $f (name: $name)"
 
-            # Move main files
+            # Move main files from old netapp location
             for oldfile in "$src_old"/${name}.*; do
                 [[ ! -f "$oldfile" ]] && continue
+                verbose_log "Found matching file in netapp: $oldfile"
                 exec_cmd mv "$oldfile" "$dst_new/" 2>/dev/null && count_moved=$((count_moved + 1))
             done
 
-            # Move thumbnails
+            # Move thumbnails from old netapp thumbs location
             if [[ -d "$src_old/thumbs" ]]; then
                 for thumbfile in "$src_old"/thumbs/${name}.*; do
                     [[ ! -f "$thumbfile" ]] && continue
+                    verbose_log "Found matching thumb in netapp: $thumbfile"
                     exec_cmd mv "$thumbfile" "$dst_new/thumbs/" 2>/dev/null && count_thumbs=$((count_thumbs + 1))
                 done
             fi
