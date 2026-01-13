@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: recreate_symlinks.sh
-# Version: 1.1.2
+# Version: 1.1.3
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 #
@@ -68,7 +68,7 @@ DIGISERVER_ROOT="/archive/www/hstam"
 DIGISERVER_ARCH="${DIGISERVER_ROOT}/architekturzeichnungen"
 DIGISERVER_KARTEN="${DIGISERVER_ROOT}/karten"
 
-WORKDIR="/tmp/hstam_arch_process_$(date '+%Y%m%d_%H%M%S')_$$"
+WORKDIR="/tmp/recreate_symlinks_$(date '+%Y%m%d_%H%M%S')_$$"
 LOGFILE="${WORKDIR}/process.log"
 
 # Create working directory
