@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: recreate_symlinks.sh
-# Version: 1.1.3
+# Version: 1.1.4
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
+#
+# VERY IMPORTANT:
+#   This script MUST be run on the digiserver VM because all online shares are
+#   served from this machine. If you need to run it on a different VM, you MUST
+#   update the root paths in the PATH CONFIG section below.
 #
 # Purpose:
 #   This script recreates symlinks HStAM architectural drawings and map collections (mostly in Karten) 

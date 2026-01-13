@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: hstam_architekturzeichnungen_restructure.sh
-# Version: 4.1.1
+# Version: 4.1.2
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
+#
+# VERY IMPORTANT:
+#   This script MUST be run on the kitodo VM. If you need to run it on a different VM,
+#   you MUST update the root paths in the PATH CONFIG section below.
+#   Please run recreate_symlinks.sh on digiserver VM to recreate symlinks.
 #
 # Purpose:
 #   This script reorganizes HStAM architectural drawings and map collections (mostly in Karten) 
@@ -21,7 +26,7 @@
 #   4. Moves files from old to new locations in Cepheus storage
 #   5. Moves files and thumbnails in NetApp storage, copies preview.jpg
 #   6. Removes empty old directories after successful migration
-#   7. Recreates symlinks from architekturzeichnungen to point to new locations
+#   7. Recreates symlinks from architekturzeichnungen to point to new locations (check note)
 #   8. Updates checksums (placeholder for future implementation)
 #   9. Cleans up the renamed_signaturen.csv file paths by removing path prefix
 #
@@ -59,6 +64,8 @@ Options:
 
 Example:
   $0 -v -n data.csv
+  
+Please run recreate_symlinks.sh on digiserver VM to recreate symlinks.
 EOF
     exit 0
 }
@@ -565,6 +572,10 @@ process_cleanup_dirs() {
 # PROCESS 7: RECREATE SYMLINKS
 ###############################################################################
 
+# NOTE: This process has been skipped because symlinks must be created on the
+#       digiserver VM where the online shares are served from. 
+#       Please run recreate_symlinks.sh on digiserver VM to recreate symlinks.
+
 process_symlinks() {
     progress "Process 7: Recreate symlinks"
 
@@ -645,6 +656,12 @@ process_symlinks() {
     log SUCCESS "Symlink recreation: $count_removed removed, $count_links created"
 }
 
+process_symlinks_temp() {
+    progress "Process 7: Recreate symlinks"
+    progress "This process has been skipped because symlinks must be created on the digiserver VM where"
+	progress "the online shares are served from. Please run recreate_symlinks.sh on digiserver VM to recreate symlinks."
+}
+
 ###############################################################################
 # PROCESS 8: CLEAN UP RENAMED CSV
 ###############################################################################
@@ -718,7 +735,7 @@ main() {
     process_move_cepheus
     process_move_netapp
     process_cleanup_dirs
-    process_symlinks
+    process_symlinks_temp
     process_clean_renamed_csv
 	process_checksum
 
