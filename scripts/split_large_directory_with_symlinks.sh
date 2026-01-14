@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: split_large_directory_with_symlinks.sh
-# Version:1.1
+# Version:1.2
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 # License: MIT
@@ -208,9 +208,11 @@ for LIST in dirs_part_*.list; do
     info "Processing range: $RANGE_DIR"
 
     while IFS= read -r DIR_NAME; do
-        SRC="${REAL_PATH}/${DIR_NAME}"
+        SRC_FILES="${REAL_PATH}/${DIR_NAME}/*"
         DST="${TARGET_RANGE_DIR}/${DIR_NAME}"
-        run_cmd "ln -s \"$SRC\" \"$DST\""
+		run_cmd "mkdir \"$DST\""
+		DSTDIR="${DST}/"
+        run_cmd "ln -s \"$SRC_FILES\" \"$DSTDIR\""
     done < "$LIST"
 
     run_cmd "rm -f \"$LIST\""
