@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: split_large_directory_with_symlinks.sh
-# Version:1.2
+# Version:1.3
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 # License: MIT
@@ -208,11 +208,30 @@ for LIST in dirs_part_*.list; do
     info "Processing range: $RANGE_DIR"
 
     while IFS= read -r DIR_NAME; do
-        SRC_FILES="${REAL_PATH}/${DIR_NAME}/*"
+        SRC="${REAL_PATH}/${DIR_NAME}"
         DST="${TARGET_RANGE_DIR}/${DIR_NAME}"
 		run_cmd "mkdir \"$DST\""
-		DSTDIR="${DST}/"
-        run_cmd "ln -s \"$SRC_FILES\" \"$DSTDIR\""
+		for f in "$SRC_FILES"/*; do
+            [[ ! -f "$f" ]] && continue
+            local link_target="${SRC}/$(basename "$f")"
+            local link_name="${DST}/$(basename "$f")"
+            
+            if [[ "$DRY_RUN" -eq 1 ]]; then
+                info "[DRY-RUN] Would create symlink: $link_name -> $link_target"
+                if [[ "$VERBOSE" -eq 1 ]]; then
+                    echo "[DRY-RUN] Would create symlink: $link_name -> $link_target"
+                fi
+            else
+                if ln -s "$link_target" "$link_name" 2>/dev/null; then
+                    info "Created symlink: $link_name -> $link_target"
+                    if [[ "$VERBOSE" -eq 1 ]]; then
+                        echo "Created symlink: $link_name -> $link_target"
+                    fi
+                else
+                    warn "Failed to create symlink: $link_name -> $link_target"
+                fi
+            fi
+        done
     done < "$LIST"
 
     run_cmd "rm -f \"$LIST\""
