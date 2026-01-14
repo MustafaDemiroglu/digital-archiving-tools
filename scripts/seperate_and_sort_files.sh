@@ -3,6 +3,11 @@
 # =============================================================================
 # SCRIPT: Seperate Dirs / Move and Renumber TIF Files
 # =============================================================================
+#
+# Author: Mustafa Demiroglu
+# Organisation: HlaDigiTeam
+# License: MIT
+#
 # DESCRIPTION:
 #   This script moves TIF files from a source folder to a target folder and
 #   renumbers them sequentially starting from 1. It only processes files that
