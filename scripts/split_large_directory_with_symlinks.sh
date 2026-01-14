@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: split_large_directory_with_symlinks.sh
-# Version:1.3
+# Version:1.3.1
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 # License: MIT
@@ -211,7 +211,7 @@ for LIST in dirs_part_*.list; do
         SRC="${REAL_PATH}/${DIR_NAME}"
         DST="${TARGET_RANGE_DIR}/${DIR_NAME}"
 		run_cmd "mkdir \"$DST\""
-		for f in "$SRC_FILES"/*; do
+		for f in "$SRC"/*; do
             [[ ! -f "$f" ]] && continue
             local link_target="${SRC}/$(basename "$f")"
             local link_name="${DST}/$(basename "$f")"
