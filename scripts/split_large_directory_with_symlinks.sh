@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: split_large_directory_with_symlinks.sh
-# Version:1.3.1
+# Version:1.3.2
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 # License: MIT
@@ -213,8 +213,8 @@ for LIST in dirs_part_*.list; do
 		run_cmd "mkdir \"$DST\""
 		for f in "$SRC"/*; do
             [[ ! -f "$f" ]] && continue
-            local link_target="${SRC}/$(basename "$f")"
-            local link_name="${DST}/$(basename "$f")"
+            link_target="${SRC}/$(basename "$f")"
+            link_name="${DST}/$(basename "$f")"
             
             if [[ "$DRY_RUN" -eq 1 ]]; then
                 info "[DRY-RUN] Would create symlink: $link_name -> $link_target"
