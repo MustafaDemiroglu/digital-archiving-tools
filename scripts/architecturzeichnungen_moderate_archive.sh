@@ -2,6 +2,10 @@
 
 ################################################################################
 # Change Archive Struktur (Move/Copy and Rename) Script
+# 
+# !!!!!!!!! VERY IMPORTANT : TESTING IS NOT DONE YET. USE OTHER SCRIPT !!!!!!!!!
+# ------------------ hstam_architekturzeichnungen_restructure ------------------ 
+#
 # Script Name: architecturzeichnungen_moderate_archive.sh 
 # Version:1.1
 # Author: Mustafa Demiroglu
