@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: split_large_directory_with_symlinks.sh
-# Version:1.3.2
+# Version:1.3.3
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 # License: MIT
@@ -210,21 +210,23 @@ for LIST in dirs_part_*.list; do
     while IFS= read -r DIR_NAME; do
         SRC="${REAL_PATH}/${DIR_NAME}"
         DST="${TARGET_RANGE_DIR}/${DIR_NAME}"
-		run_cmd "mkdir \"$DST\""
+		run_cmd "mkdir -p \"$DST\""
+		
+		shopt -s nullglob
 		for f in "$SRC"/*; do
             [[ ! -f "$f" ]] && continue
             link_target="${SRC}/$(basename "$f")"
             link_name="${DST}/$(basename "$f")"
             
-            if [[ "$DRY_RUN" -eq 1 ]]; then
+            if [[ "$DRY_RUN" == true ]]; then
                 info "[DRY-RUN] Would create symlink: $link_name -> $link_target"
-                if [[ "$VERBOSE" -eq 1 ]]; then
+                if [[ "$VERBOSE" == true ]]; then
                     echo "[DRY-RUN] Would create symlink: $link_name -> $link_target"
                 fi
             else
                 if ln -s "$link_target" "$link_name" 2>/dev/null; then
                     info "Created symlink: $link_name -> $link_target"
-                    if [[ "$VERBOSE" -eq 1 ]]; then
+                    if [[ "$VERBOSE" == true ]]; then
                         echo "Created symlink: $link_name -> $link_target"
                     fi
                 else
