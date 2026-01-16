@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: update_md5checksum.sh 
-# Version 9.0
+# Version 9.1.0
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -335,19 +335,19 @@ process_renamed_files_csv() {
     while IFS= read -r md5_line; do
         line_num=$((line_num + 1))
 		TOTAL_MD5_LINES=$((TOTAL_MD5_LINES + 1))
-        
-        # Show progress every 10000 lines
-        if [ $((line_num % 10000)) -eq 0 ]; then
-            show_progress $line_num $total_lines
-        fi
-        
+         
 		# Parse MD5 line: <hash><space><path>
 		if [[ "$md5_line" =~ ^([a-f0-9A-F]{32})[[:space:]]+(.+)$ ]]; then	
             local hash="${BASH_REMATCH[1]}"
             local file_path="${BASH_REMATCH[2]}"
             
+			# normalize path
+			file_path="${file_path//$'\r'/}"
+            file_path="$(printf '%s' "$file_path" | sed 's/[[:space:]]*$//')"
+
             # Check if this path is in our map            
-            if [ -n "${PATH_MAP[$file_path]:-}" ]; then
+			if [[ -n "${PATH_MAP[$file_path]+_}" ]]; then
+			
                 local new_path="${PATH_MAP[$file_path]}"
 				
 				# Write hash + new path to temp file
@@ -355,19 +355,19 @@ process_renamed_files_csv() {
 				
                 log_action "Renamed full path in MD5: $file_path → $new_path"
                 TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
-				
-				if [ "$VERBOSE" = true ]; then
-                    success "Line $line_num: $file_path → $new_path"
-                fi
-				
-                [ "$VERBOSE" = true ] && [ $((TOTAL_CHANGES % 100)) -eq 0 ] && info "Processed $TOTAL_CHANGES changes..."
-            
+				               
+				[ "$VERBOSE" = true ] && success "Line $line_num: $file_path → $new_path"               
 			else 	# No match - keep original line
                 echo "$md5_line" >> "$temp_file"
             fi
         else		# Not MD5 format - keep as is
             echo "$md5_line" >> "$temp_file"
         fi
+		
+		# Show progress every 10000 lines
+		if [ $((line_num % 10000)) -eq 0 ]; then
+			show_progress $line_num $total_lines
+		fi
     done < "$md5_file"
     
     show_progress $total_lines $total_lines
