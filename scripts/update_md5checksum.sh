@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: update_md5checksum.sh 
-# Version 9.1.0
+# Version 9.2.0
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -304,6 +304,8 @@ load_csv_instructions() {
 process_renamed_files_csv() {
     local md5_file="$1"
     local csv_file="$2"
+	local csv_tmp="${csv_file}.tmp"
+    local csv_changed=false
     
     info "Processing renamed_files.csv format (full_path_old,full_path_new)"
     
@@ -322,6 +324,9 @@ process_renamed_files_csv() {
     fi
     
     TOTAL_CHANGES=0
+	
+	# Track actually renamed paths
+    declare -A RENAMED_PATHS=()
     
     output_and_log "$(printf '=%.0s' {1..60})"
     info "Starting MD5 file processing..."
@@ -355,6 +360,8 @@ process_renamed_files_csv() {
 				
                 log_action "Renamed full path in MD5: $file_path → $new_path"
                 TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
+				RENAMED_PATHS["$file_path"]=1
+                csv_changed=true
 				               
 				[ "$VERBOSE" = true ] && success "Line $line_num: $file_path → $new_path"               
 			else 	# No match - keep original line
@@ -365,7 +372,7 @@ process_renamed_files_csv() {
         fi
 		
 		# Show progress every 10000 lines
-		if [ $((line_num % 10000)) -eq 0 ]; then
+		if [ $((line_num % 1000)) -eq 0 ]; then
 			show_progress $line_num $total_lines
 		fi
     done < "$md5_file"
@@ -376,6 +383,25 @@ process_renamed_files_csv() {
     # Save results
     save_results "$md5_file" "$backup_file" "$temp_file"
     rm -f "$temp_file"
+	
+	 # CSV CLEANUP: remove only successfully used rows
+    if [[ "$csv_changed" == true ]]; then
+        log_action "Cleaning CSV: removing processed rename entries"
+
+        while IFS=';' read -r old_path rest; do
+            if [[ -z "${RENAMED_PATHS[$old_path]+_}" ]]; then
+                echo "$old_path;$rest" >> "$csv_tmp"
+            else
+                log_action "CSV row removed (rename applied): $old_path"
+            fi
+        done < "$csv_file"
+
+        mv "$csv_tmp" "$csv_file"
+        log_action "CSV updated: processed rows removed"
+    else
+        log_action "No renames applied → CSV left untouched"
+        rm -f "$csv_tmp"
+    fi
 }
 
 # Path update processing
