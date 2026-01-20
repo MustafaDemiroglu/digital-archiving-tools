@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: update_md5checksum.sh 
-# Version 9.2.0
+# Version 9.2.1
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -39,6 +39,7 @@ DRY_RUN=false
 VERBOSE=false
 BASE_PATH=""
 SEARCH_SUBDIRS=false
+CSV_PROCESSED=false
 
 # --- AUDIT COUNTERS ---
 TOTAL_CHANGES=0
@@ -305,7 +306,6 @@ process_renamed_files_csv() {
     local md5_file="$1"
     local csv_file="$2"
 	local csv_tmp="${csv_file}.tmp"
-    local csv_changed=false
     
     info "Processing renamed_files.csv format (full_path_old,full_path_new)"
     
@@ -361,7 +361,6 @@ process_renamed_files_csv() {
                 log_action "Renamed full path in MD5: $file_path → $new_path"
                 TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
 				RENAMED_PATHS["$file_path"]=1
-                csv_changed=true
 				               
 				[ "$VERBOSE" = true ] && success "Line $line_num: $file_path → $new_path"               
 			else 	# No match - keep original line
@@ -371,7 +370,7 @@ process_renamed_files_csv() {
             echo "$md5_line" >> "$temp_file"
         fi
 		
-		# Show progress every 10000 lines
+		# Show progress every 1000 lines
 		if [ $((line_num % 1000)) -eq 0 ]; then
 			show_progress $line_num $total_lines
 		fi
@@ -379,14 +378,13 @@ process_renamed_files_csv() {
     
     show_progress $total_lines $total_lines
     echo ""
-    
-    # Save results
-    save_results "$md5_file" "$backup_file" "$temp_file"
-    rm -f "$temp_file"
-	
-	 # CSV CLEANUP: remove only successfully used rows
-    if [[ "$csv_changed" == true ]]; then
-        log_action "Cleaning CSV: removing processed rename entries"
+    	
+	# CSV CLEANUP: remove only successfully used rows
+    if [ "$TOTAL_CHANGES" -eq 0 ]; then
+        log_action "No renames applied → CSV left untouched"
+        rm -f "$csv_tmp"
+    else
+		log_action "Cleaning CSV: removing processed rename entries"
 
         while IFS=';' read -r old_path rest; do
             if [[ -z "${RENAMED_PATHS[$old_path]+_}" ]]; then
@@ -398,10 +396,9 @@ process_renamed_files_csv() {
 
         mv "$csv_tmp" "$csv_file"
         log_action "CSV updated: processed rows removed"
-    else
-        log_action "No renames applied → CSV left untouched"
-        rm -f "$csv_tmp"
     fi
+	
+	save_results "$md5_file" "$backup_file" "$temp_file"
 }
 
 # Path update processing
@@ -446,15 +443,14 @@ process_path_update_csv() {
         line_num=$((line_num + 1))
 		TOTAL_MD5_LINES=$((TOTAL_MD5_LINES + 1))
         
-        # Show progress every 10000 lines
-        if [ $((line_num % 10000)) -eq 0 ]; then
+        # Show progress every 1000 lines
+        if [ $((line_num % 1000)) -eq 0 ]; then
             show_progress $line_num $total_lines
         fi
         
         if [[ "$md5_line" =~ ^([a-f0-9]{32})[[:space:]]+(.+)$ ]]; then
             local hash="${BASH_REMATCH[1]}"
             local file_path="${BASH_REMATCH[2]}"
-            local matched=false
             
             # Check for deletion first
             for deletion_path in "${!DELETION_PATHS[@]}"; do
@@ -463,12 +459,11 @@ process_path_update_csv() {
                     [ "$VERBOSE" = true ] && [ $((TOTAL_CHANGES % 100)) -eq 0 ] && info "Deleted: $file_path"
                     log_action "Deleted MD5 entry: $file_path"
                     TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
-                    matched=true
                     break
                 fi
             done
             
-            if [ "$matched" = false ]; then
+			if [ "$TOTAL_CHANGES" -eq 0 ]; then
                 # Check for path updates
                 for src_path in "${!PATH_MAP[@]}"; do
                     if [[ "$file_path" == "$src_path/"* ]]; then
@@ -479,22 +474,18 @@ process_path_update_csv() {
                         local counter=${FILE_COUNTERS["$src_path"]}
                         local new_filename
                         new_filename=$(build_new_filename "$file_path" "$dst" "$newname" "$counter")
-                        local new_path="${dst}/${new_filename}"
                         
+						local new_path="${dst}/${new_filename}"
                         echo "$hash  $new_path" >> "$temp_file"
-                        
                         FILE_COUNTERS["$src_path"]=$((counter + 1))
                         [ "$VERBOSE" = true ] && [ $((TOTAL_CHANGES % 100)) -eq 0 ] && info "Updated: $(basename "$file_path") → $(basename "$new_path")"
                         log_action "Updated MD5 entry: $file_path → $new_path"
                         TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
-                        matched=true
                         break
                     fi
                 done
-            fi
-            
-            if [ "$matched" = false ]; then
-                # Keep original line unchanged
+				
+				# Keep original line unchanged
                 echo "$md5_line" >> "$temp_file"
 				SKIPPED_NO_MATCH=$((SKIPPED_NO_MATCH + 1))
                 log_action "Skipped (no CSV match): $file_path" "INFO"
@@ -509,10 +500,8 @@ process_path_update_csv() {
     
     show_progress $total_lines $total_lines
     echo ""
-    
-    # Save results
+	
     save_results "$md5_file" "$backup_file" "$temp_file"
-    rm -f "$temp_file"
 }
 
 save_results() {
@@ -524,6 +513,7 @@ save_results() {
     
     # Save updated MD5 file
     if [ "$TOTAL_CHANGES" -gt 0 ]; then
+		CSV_PROCESSED=true
         if [ "$DRY_RUN" = true ]; then
             info "Dry-run mode: Would update $TOTAL_CHANGES entries in MD5 file"
             output_and_log "${YELLOW}Preview of updated MD5 file:${NC}"
@@ -541,10 +531,12 @@ save_results() {
             log_action "MD5 file updated with $TOTAL_CHANGES changes"
         fi
     else
-        warning "No matching entries found - MD5 file unchanged"
-        rm -f "$temp_file"
+        warning "No matching entries found - MD5 file unchanged, because of that $backup_file deleted"
+		rm -f "$backup_file"
     fi
     
+	rm -f "$temp_file"
+	
     # Create detailed report
     local output_file="md5_update_paths_output_$(date +%Y%m%d_%H%M%S).log"
     {
@@ -869,6 +861,13 @@ TERMINAL_LOG+=("Please select CSV file (1-${#CSV_FILES[@]}): $csv_choice")
 if [[ "$csv_choice" =~ ^[0-9]+$ ]] && [ "$csv_choice" -ge 1 ] && [ "$csv_choice" -le ${#CSV_FILES[@]} ]; then
     CSV_FILE=$(normalize_path "${CSV_FILES[$((csv_choice-1))]}")
     info "Selected CSV file: $CSV_FILE"
+	
+	# Create backup
+    CSV_BACKUP_FILE="${CSV_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+    if [ "$DRY_RUN" = false ]; then
+        cp "$CSV_FILE" "$CSV_BACKUP_FILE"
+        success "CSV Backup created: $CSV_BACKUP_FILE"
+    fi		
 else
     error_exit "Invalid selection: $csv_choice"
 fi
@@ -926,6 +925,11 @@ esac
 
 if [ "$DRY_RUN" = true ]; then
     info "This was a dry-run. Remove -n parameter to make actual changes."
+fi
+
+if [ "$CSV_PROCESSED" = false ]; then
+	log_action "No matching entries found - MD5 file unchanged, because of that $backup_file deleted"
+	rm -f "$CSV_BACKUP_FILE"
 fi
 
 echo ""
