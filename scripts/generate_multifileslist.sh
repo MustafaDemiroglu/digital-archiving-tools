@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script		: generate_multifileslist.sh
-# Version		: 2.0
+# Version		: 2.1
 # Author		: Mustafa Demiroglu
 # Organisation	: HlaDigiTeam
 #
@@ -12,11 +12,13 @@
 #
 #   Default mode:
 #     - Lists ALL files under given directories
+#	  - ./generate_multifileslist.sh	
 #
 #   Optional profile:
 #     --only_first_images
 #     - Finds all leaf (deepest) directories
 #     - Takes only the first image (natural sort) from each leaf directory
+#	  - ./generate_multifileslist.sh --only_first_images
 #
 # Output:
 #   /tmp/generierung.list
@@ -72,20 +74,21 @@ while IFS= read -r LINE || [[ -n "$LINE" ]]; do
             find "$ABS_DIR" -type f >> /tmp/generierung.list
         else
             # --only_first_images behavior
-            # Find leaf directories (directories without subdirectories)
             find "$ABS_DIR" -type d | while read -r DIR; do
-                if ! find "$DIR" -mindepth 1 -type d | read -r _; then
-                    # Leaf directory found
-                    FIRST_IMAGE=$(find "$DIR" -maxdepth 1 -type f \
-                        | grep -iE "$IMAGE_REGEX" \
-                        | sort -V \
-                        | head -n 1)
+				# Check if directory has NO subdirectories (leaf directory)
+				if [[ -z "$(find "$DIR" -mindepth 1 -type d -print -quit)" ]]; then
 
-                    if [[ -n "$FIRST_IMAGE" ]]; then
-                        echo "$FIRST_IMAGE" >> /tmp/generierung.list
-                    fi
-                fi
-            done
+					# Take first image in natural sort order
+					FIRST_IMAGE=$(find "$DIR" -maxdepth 1 -type f \
+						| grep -iE "$IMAGE_REGEX" \
+						| sort -V \
+						| head -n 1)
+
+					if [[ -n "$FIRST_IMAGE" ]]; then
+						echo "$FIRST_IMAGE" >> /tmp/generierung.list
+					fi
+				fi
+			done
         fi
     done
 done < "$LIST_FILE"
