@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script		: generate_multifileslist.sh
-# Version		: 2.1
+# Version		: 2.2
 # Author		: Mustafa Demiroglu
 # Organisation	: HlaDigiTeam
 #
@@ -42,9 +42,6 @@ if [[ ! -f "$LIST_FILE" ]]; then
     exit 1
 fi
 
-# Image extensions (case-insensitive)
-IMAGE_REGEX='.*\.\(jpg\|jpeg\|tif\|tiff\|png\)$'
-
 while IFS= read -r LINE || [[ -n "$LINE" ]]; do
     [[ -z "$LINE" ]] && continue
 
@@ -80,9 +77,9 @@ while IFS= read -r LINE || [[ -n "$LINE" ]]; do
 
 					# Take first image in natural sort order
 					FIRST_IMAGE=$(find "$DIR" -maxdepth 1 -type f \
-						| grep -iE "$IMAGE_REGEX" \
-						| sort -V \
-						| head -n 1)
+					| grep -iE '.*\.(jpg|jpeg|tif|tiff|png)$' \
+					| sort -V \
+					| head -n 1)
 
 					if [[ -n "$FIRST_IMAGE" ]]; then
 						echo "$FIRST_IMAGE" >> /tmp/generierung.list
