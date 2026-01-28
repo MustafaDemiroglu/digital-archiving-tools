@@ -28,6 +28,9 @@ log "INFO" "Script started. CSV file: $CSV_FILE"
 # READ CSV LINE BY LINE
 while IFS= read -r signature || [[ -n "$signature" ]]; do
 
+	# Remove Windows CR character
+    signature="${signature//$'\r'/}"
+	
     # Skip empty lines
     [[ -z "$signature" ]] && continue
 
