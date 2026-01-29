@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: safe_multi_delete_with_csv.sh
-# Version: 6.0
+# Version: 7.0
 # Author: Mustafa Demiroglu
+# Organisation: HlaDigiTeam
 #
 # Description:
 #   Safely delete files listed in a CSV/TXT/LIST file.
@@ -185,10 +186,12 @@ collect_delete_candidates() {
     todo="$(trim "$todo")"
     todo="$(lower "$todo")"
     [[ -z "$f" ]] && continue
-    if [[ "$todo" == "delete" ]]; then
-      normalize_path "$f"
-      echo
-    fi
+    # If second column exists, require "delete"
+	# If no second column (plain list), delete anyway
+	if [[ -z "$todo" || "$todo" == "delete" ]]; then
+	  normalize_path "$f"
+	  echo
+	fi
   done < "$FILE"
 }
 
@@ -199,7 +202,7 @@ preview_and_confirm() {
   local -a missing=()
   local x
   for x in "${all[@]}"; do
-    if [[ -f "$x" ]]; then
+    if [[ -e "$x" ]]; then
       exist+=("$x")
     else
       missing+=("$x")
@@ -234,7 +237,7 @@ delete_serial() {
   local -a arr=("$@")
   local f
   for f in "${arr[@]}"; do
-    if rm -f -- "$f"; then
+    if rm -rf -- "$f"; then
       log "[DELETED] $f"
     else
       echo "[ERROR] Could not delete: $f" | tee -a "$ERRFILE"
@@ -249,7 +252,7 @@ delete_parallel() {
   # Use NUL delimiters for safety
   printf '%s\0' "${arr[@]}" | xargs -0 -I{} -P "$nproc" bash -c '
     f="$1"
-    if rm -f -- "$f"; then
+    if rm -rf -- "$f"; then
       echo "[DELETED] $f" >> "'"$LOGFILE"'"
       echo "[DELETED] $f"
     else
@@ -304,7 +307,7 @@ fi
 
 # Filter to existing files only for deletion
 EXISTING=()
-for f in "${CANDIDATES[@]}"; do [[ -f "$f" ]] && EXISTING+=("$f"); done
+for f in "${CANDIDATES[@]}"; do [[ -e "$f" ]] && EXISTING+=("$f"); done
 if ((${#EXISTING[@]} == 0)); then
   log "Nothing to delete after re-check."
   echo "Done. Logs written to $LOGFILE, errors to $ERRFILE."
