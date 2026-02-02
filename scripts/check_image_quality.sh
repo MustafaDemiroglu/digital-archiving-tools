@@ -39,7 +39,8 @@ if [[ -z "$ROOT_PATH" || ! -d "$ROOT_PATH" ]]; then
 fi
 
 # CSV header
-echo "path,filename,age_check,size_check,reason" > "$OUTPUT"
+# echo "path,filename,age_check,size_check,reason" > "$OUTPUT"
+echo "Pfad,Dateiname,Altersprüfung,Größenprüfung,Hinweis" > "$OUTPUT"
 
 CURRENT_EPOCH=$(date +%s)
 AGE_LIMIT_SEC=$(( AGE_YEARS * 365 * 24 * 60 * 60 ))
@@ -60,7 +61,8 @@ while IFS= read -r -d '' file; do
   age_diff=$(( CURRENT_EPOCH - mtime ))
 
   if (( age_diff >= AGE_LIMIT_SEC )); then
-    age_check="AGE_15Y+"
+    # age_check="AGE_15Y+"
+    age_check="Älter als 15 Jahre"
   else
     age_check="OK"
   fi
@@ -69,14 +71,18 @@ while IFS= read -r -d '' file; do
   size=$(stat -c %s "$file")
 
   if (( size < SIZE_LIMIT_BYTES )); then
-    size_check="SIZE_LT_5MB"
+    # size_check="SIZE_LT_5MB"
+    size_check="Kleiner als 5 MB"
   else
     size_check="OK"
   fi
 
   ### DECISION #########################################################
   if [[ "$age_check" != "OK" || "$size_check" != "OK" ]]; then
-    reason=$(printf "%s;%s" "$age_check" "$size_check")
+    reason=""
+    [[ "$age_check" != "OK" ]] && reason="Sehr alte Datei"
+    [[ "$size_check" != "OK" ]] && reason="${reason:+$reason + }Sehr kleine Datei"
+
     echo "\"$filepath\",\"$filename\",\"$age_check\",\"$size_check\",\"$reason\"" \
       >> "$OUTPUT"
   fi
