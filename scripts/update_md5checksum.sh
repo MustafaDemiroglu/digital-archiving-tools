@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: update_md5checksum.sh 
-# Version 9.2.1
+# Version 9.3.1
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -451,7 +451,8 @@ process_path_update_csv() {
         if [[ "$md5_line" =~ ^([a-f0-9]{32})[[:space:]]+(.+)$ ]]; then
             local hash="${BASH_REMATCH[1]}"
             local file_path="${BASH_REMATCH[2]}"
-            
+            local line_handled=false
+
             # Check for deletion first
             for deletion_path in "${!DELETION_PATHS[@]}"; do
                 if [[ "$file_path" == "$deletion_path/"* ]]; then
@@ -459,12 +460,13 @@ process_path_update_csv() {
                     [ "$VERBOSE" = true ] && [ $((TOTAL_CHANGES % 100)) -eq 0 ] && info "Deleted: $file_path"
                     log_action "Deleted MD5 entry: $file_path"
                     TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
+					line_handled=true
                     break
                 fi
             done
-            
-			if [ "$TOTAL_CHANGES" -eq 0 ]; then
-                # Check for path updates
+
+			# Check for path updates
+			if [ "$line_handled" = false ]; then
                 for src_path in "${!PATH_MAP[@]}"; do
                     if [[ "$file_path" == "$src_path/"* ]]; then
                         local dst_info="${PATH_MAP[$src_path]}"
@@ -484,18 +486,17 @@ process_path_update_csv() {
                         break
                     fi
                 done
-				
-				# Keep original line unchanged
-                echo "$md5_line" >> "$temp_file"
-				SKIPPED_NO_MATCH=$((SKIPPED_NO_MATCH + 1))
-                log_action "Skipped (no CSV match): $file_path" "INFO"
             fi
-        else
-            # Keep non-MD5 lines unchanged
-            echo "$md5_line" >> "$temp_file"
-			SKIPPED_INVALID_MD5=$((SKIPPED_INVALID_MD5 + 1))
-            log_action "Invalid MD5 line format (line $line_num): $md5_line" "ERROR"
-        fi
+        
+    		# Keep original line if nothing matched  
+			if [ "$line_handled" = false ]; then
+            	echo "$md5_line" >> "$temp_file"
+				SKIPPED_INVALID_MD5=$((SKIPPED_INVALID_MD5 + 1))
+				log_action "Skipped (no CSV match): $file_path" "INFO"
+        	fi
+		else
+			log_action "Invalid MD5 line format (line $line_num): $md5_line" "ERROR"
+		fi
     done < "$md5_file"
     
     show_progress $total_lines $total_lines
