@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: update_md5checksum.sh 
-# Version 9.4.2
+# Version 9.4.3
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -231,30 +231,36 @@ load_csv_instructions() {
     local line_count=0
     {
         read # Skip header
-        while IFS= read -r line; do
-            line=$(echo "$line" | tr -d '\r') # Remove Windows line endings
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            line="${line//$'\r'/}" 			# Remove Windows line endings
             [ -z "$line" ] && continue
             
             line_count=$((line_count + 1))
             
             if [ "$csv_type" = "simple_rename" ]; then                 # Simple format: old_path,new_path or old_path<tab>new_path
                 IFS=$',;\t' read -r old_path new_path <<< "$line"
-                old_path=$(echo "$old_path" | xargs)
-                new_path=$(echo "$new_path" | xargs)
+                old_path="${old_path#"${old_path%%[![:space:]]*}"}"
+                old_path="${old_path%"${old_path##*[![:space:]]}"}"
+                new_path="${new_path#"${new_path%%[![:space:]]*}"}"
+                new_path="${new_path%"${new_path##*[![:space:]]}"}"
                 
                 # Debug output for troubleshooting
-                [ "$VERBOSE" = true ] && info "Parsing line $line_count: '$old_path' -> '$new_path'"
+                #[ "$VERBOSE" = true ] && info "Parsing line $line_count: '$old_path' -> '$new_path'"
                 
                 if [ -n "$old_path" ] && [ -n "$new_path" ]; then	    # Add to map if both values exist
                     PATH_MAP["$old_path"]="$new_path"
-                else
-                    [ "$VERBOSE" = true ] && warning "Skipping invalid line $line_count: $line"
+                #else
+                #   [ "$VERBOSE" = true ] && warning "Skipping invalid line $line_count: $line"
                 fi
             else 														# Path update format: src,dst,newname
                 IFS=$',;\t' read -r src dst newname <<< "$line"
-                src=$(echo "$src" | xargs)
-                dst=$(echo "$dst" | xargs)
-                newname=$(echo "$newname" | xargs)
+                
+				src="${src#"${src%%[![:space:]]*}"}"
+                src="${src%"${src##*[![:space:]]}"}"
+                dst="${dst#"${dst%%[![:space:]]*}"}"
+                dst="${dst%"${dst##*[![:space:]]}"}"
+                newname="${newname#"${newname%%[![:space:]]*}"}"
+                newname="${newname%"${newname##*[![:space:]]}"}"
                 
                 [ -z "$src" ] && continue
                 
@@ -277,20 +283,23 @@ load_csv_instructions() {
     fi
 
 	# Show first few mappings if verbose to a better debugging
-    if [ "$VERBOSE" = true ] && [ ${#PATH_MAP[@]} -gt 0 ]; then
-        info "First few path mappings:"
-        local count=0
-        for key in "${!PATH_MAP[@]}"; do
-            info "  '$key' -> '${PATH_MAP[$key]}'"
-            count=$((count + 1))
-            [ $count -ge 10 ] && break
-        done
-    fi
+    #if [ "$VERBOSE" = true ] && [ ${#PATH_MAP[@]} -gt 0 ]; then
+    #   info "First few path mappings:"
+    #    local count=0
+    #    for key in "${!PATH_MAP[@]}"; do
+    #        info "  '$key' -> '${PATH_MAP[$key]}'"
+    #        count=$((count + 1))
+    #        [ $count -ge 10 ] && break
+    #    done
+    #fi
 	
 	# Audit: CSV rules loaded but no MD5 processed yet
-    for src in "${!PATH_MAP[@]}"; do
-        log_action "CSV rule loaded: $src → ${PATH_MAP[$src]}" "INFO"
-    done
+    #for src in "${!PATH_MAP[@]}"; do
+    #    log_action "CSV rule loaded: $src → ${PATH_MAP[$src]}" "INFO"
+    #done
+	
+	#  speed up: Instead log summary only
+    log_action "CSV loaded: ${#PATH_MAP[@]} updates, ${#DELETION_PATHS[@]} deletions" "INFO"
 }
 
 ###############################################################################
