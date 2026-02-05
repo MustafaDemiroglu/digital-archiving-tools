@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: update_md5checksum.sh 
-# Version 9.3.1
+# Version 9.4.0
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -431,6 +431,18 @@ process_path_update_csv() {
     local temp_file
     temp_file=$(mktemp)
     
+	# Fast lookup Maps (3-level path index)
+	declare -A FAST_DELETE
+    declare -A FAST_UPDATE
+
+    for p in "${!DELETION_PATHS[@]}"; do
+        FAST_DELETE["$p"]=1
+    done
+
+    for p in "${!PATH_MAP[@]}"; do
+        FAST_UPDATE["$p"]="${PATH_MAP[$p]}"
+    done
+	
     # Reset file counters for each source path
     local src_path
     for src_path in "${!PATH_MAP[@]}"; do
@@ -453,41 +465,37 @@ process_path_update_csv() {
             local file_path="${BASH_REMATCH[2]}"
             local line_handled=false
 
+			# Extract first 3 path segments as lookup key
+			local key
+            key=$(echo "$file_path" | cut -d'/' -f1-4)
+			
             # Check for deletion first
-            for deletion_path in "${!DELETION_PATHS[@]}"; do
-                if [[ "$file_path" == "$deletion_path/"* ]]; then
-                    # Delete this entry (don't write to temp file)
-                    [ "$VERBOSE" = true ] && [ $((TOTAL_CHANGES % 100)) -eq 0 ] && info "Deleted: $file_path"
-                    log_action "Deleted MD5 entry: $file_path"
-                    TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
-					line_handled=true
-                    break
-                fi
-            done
+            if [[ -n "${FAST_DELETE[$key]}" ]]; then
+                [ "$VERBOSE" = true ] && [ $((TOTAL_CHANGES % 100)) -eq 0 ] && info "Deleted: $file_path"
+                log_action "Deleted MD5 entry: $file_path"
+                TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
+                line_handled=true
+            fi
 
 			# Check for path updates
-			if [ "$line_handled" = false ]; then
-                for src_path in "${!PATH_MAP[@]}"; do
-                    if [[ "$file_path" == "$src_path/"* ]]; then
-                        local dst_info="${PATH_MAP[$src_path]}"
-                        IFS='|' read -r dst newname <<< "$dst_info"
-                        
-                        # Build new filename
-                        local counter=${FILE_COUNTERS["$src_path"]}
-                        local new_filename
-                        new_filename=$(build_new_filename "$file_path" "$dst" "$newname" "$counter")
-                        
-						local new_path="${dst}/${new_filename}"
-                        echo "$hash  $new_path" >> "$temp_file"
-                        FILE_COUNTERS["$src_path"]=$((counter + 1))
-                        [ "$VERBOSE" = true ] && [ $((TOTAL_CHANGES % 100)) -eq 0 ] && info "Updated: $(basename "$file_path") → $(basename "$new_path")"
-                        log_action "Updated MD5 entry: $file_path → $new_path"
-                        TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
-                        break
-                    fi
-                done
+			if [ "$line_handled" = false ] && [[ -n "${FAST_UPDATE[$key]}" ]]; then
+                IFS='|' read -r dst newname <<< "${FAST_UPDATE[$key]}"
+
+                local counter=${FILE_COUNTERS["$key"]}
+                local new_filename
+                new_filename=$(build_new_filename "$file_path" "$dst" "$newname" "$counter")
+                local new_path="${dst}/${new_filename}"
+
+                echo "$hash  $new_path" >> "$temp_file"
+
+                FILE_COUNTERS["$key"]=$((counter + 1))
+
+                [ "$VERBOSE" = true ] && [ $((TOTAL_CHANGES % 100)) -eq 0 ] && info "Updated: $(basename "$file_path") → $(basename "$new_path")"
+                log_action "Updated MD5 entry: $file_path → $new_path"
+                TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
+                line_handled=true
             fi
-        
+  
     		# Keep original line if nothing matched  
 			if [ "$line_handled" = false ]; then
             	echo "$md5_line" >> "$temp_file"
