@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: update_md5checksum.sh 
-# Version 9.4.3
+# Version 9.4.4
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -414,118 +414,88 @@ process_renamed_files_csv() {
 process_path_update_csv() {
     local md5_file="$1"
     local csv_file="$2"
-    
+
     info "Processing path update CSV format (Source_Pfad,Ziel_Pfad,New_filenames)"
-    
-    # Load CSV instructions
     load_csv_instructions "$csv_file" "path_update"
-    
+
     local total_lines
     total_lines=$(wc -l < "$md5_file")
     info "MD5 file has $total_lines entries"
-    
-    # Create backup
+
     local backup_file="${md5_file}.backup.$(date +%Y%m%d_%H%M%S)"
     if [ "$DRY_RUN" = false ]; then
         cp "$md5_file" "$backup_file"
         success "Backup created: $backup_file"
     fi
-    
+
     TOTAL_CHANGES=0
-    
     output_and_log "$(printf '=%.0s' {1..60})"
-    info "Starting  MD5 file processing..."
-    
-    # Create temporary file for output
+    info "Starting MD5 file processing..."
+
     local temp_file
     temp_file=$(mktemp)
-    
-	# Fast lookup Maps (3-level path index)
-	declare -A FAST_DELETE
-    declare -A FAST_UPDATE
 
-    for p in "${!DELETION_PATHS[@]}"; do
-        FAST_DELETE["$p"]=1
-    done
+    declare -A FAST_DELETE FAST_UPDATE
+    for p in "${!DELETION_PATHS[@]}"; do FAST_DELETE["$p"]=1; done
+    for p in "${!PATH_MAP[@]}"; do FAST_UPDATE["$p"]="${PATH_MAP[$p]}"; FILE_COUNTERS["$p"]=1; done
 
-    for p in "${!PATH_MAP[@]}"; do
-        FAST_UPDATE["$p"]="${PATH_MAP[$p]}"
-    done
-	
-    # Reset file counters for each source path
-    local src_path
-    for src_path in "${!PATH_MAP[@]}"; do
-        FILE_COUNTERS["$src_path"]=1
-    done
-    
-    # Single pass through MD5 file
     local line_num=0
+
+    exec 3> "$temp_file"
+
     while IFS= read -r md5_line; do
-        line_num=$((line_num + 1))
-		TOTAL_MD5_LINES=$((TOTAL_MD5_LINES + 1))
-        
-        # Show progress every 1000 lines
-        if [ $((line_num % 1000)) -eq 0 ]; then
-            show_progress $line_num $total_lines
+        ((line_num++))
+        ((TOTAL_MD5_LINES++))
+
+        (( line_num % 5000 == 0 )) && show_progress $line_num $total_lines
+
+        # Fast split instead of regex
+        hash="${md5_line%% *}"
+        file_path="${md5_line#* }"
+
+        [[ ${#hash} -ne 32 ]] && continue
+
+        line_handled=false
+
+        path_no_file="${file_path%/*}"
+        slash_count="${path_no_file//[^\/]}"
+        depth=${#slash_count}
+
+        if (( depth >= 3 )); then
+            key="${path_no_file#*/}"         # remove first segment
+            key="${key%%/*/*/*}"             # keep next 3
+        else
+            key="${path_no_file%%/*/*/*}"    # keep first 3
         fi
-        
-        if [[ "$md5_line" =~ ^([a-f0-9]{32})[[:space:]]+(.+)$ ]]; then
-            local hash="${BASH_REMATCH[1]}"
-            local file_path="${BASH_REMATCH[2]}"
-            local line_handled=false
 
-			# Extract first 3 path segments as lookup key without secure or fremd
-			local key
-			IFS='/' read -ra PARTS <<< "$file_path"
-			unset 'PARTS[${#PARTS[@]}-1]'
-			dir_count=${#PARTS[@]}
-			if (( dir_count >= 4 )); then
-				key="${PARTS[0]}/${PARTS[1]}/${PARTS[2]}/${PARTS[3]}"
-			else
-				key="${PARTS[0]}/${PARTS[1]}/${PARTS[2]}"
-			fi
-			
-            # Check for deletion first
-            if [[ -n "${FAST_DELETE[$key]}" ]]; then
-                [ "$VERBOSE" = true ] && [ $((TOTAL_CHANGES % 100)) -eq 0 ] && info "Deleted: $file_path"
-                log_action "Deleted MD5 entry: $file_path"
-                TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
-                line_handled=true
-            fi
+        if [[ -n "${FAST_DELETE[$key]}" ]]; then
+            ((TOTAL_CHANGES++))
+            line_handled=true
+            continue
+        fi
 
-			# Check for path updates
-			if [ "$line_handled" = false ] && [[ -n "${FAST_UPDATE[$key]}" ]]; then
-                IFS='|' read -r dst newname <<< "${FAST_UPDATE[$key]}"
+        if [[ "$line_handled" = false && -n "${FAST_UPDATE[$key]}" ]]; then
+            IFS='|' read -r dst newname <<< "${FAST_UPDATE[$key]}"
+            counter=${FILE_COUNTERS["$key"]}
 
-                local counter=${FILE_COUNTERS["$key"]}
-                local new_filename
-                new_filename=$(build_new_filename "$file_path" "$dst" "$newname" "$counter")
-                local new_path="${dst}/${new_filename}"
+            new_filename=$(build_new_filename "$file_path" "$dst" "$newname" "$counter")
+            new_path="${dst}/${new_filename}"
 
-                echo "$hash  $new_path" >> "$temp_file"
+            printf "%s  %s\n" "$hash" "$new_path" >&3
+            FILE_COUNTERS["$key"]=$((counter + 1))
+            ((TOTAL_CHANGES++))
+            continue
+        fi
 
-                FILE_COUNTERS["$key"]=$((counter + 1))
+        printf "%s\n" "$md5_line" >&3
 
-                [ "$VERBOSE" = true ] && [ $((TOTAL_CHANGES % 100)) -eq 0 ] && info "Updated: $(basename "$file_path") → $(basename "$new_path")"
-                log_action "Updated MD5 entry: $file_path → $new_path"
-                TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
-                line_handled=true
-            fi
-  
-    		# Keep original line if nothing matched  
-			if [ "$line_handled" = false ]; then
-            	echo "$md5_line" >> "$temp_file"
-				SKIPPED_INVALID_MD5=$((SKIPPED_INVALID_MD5 + 1))
-				log_action "Skipped (no CSV match): $file_path" "INFO"
-        	fi
-		else
-			log_action "Invalid MD5 line format (line $line_num): $md5_line" "ERROR"
-		fi
     done < "$md5_file"
-    
+
+    exec 3>&-
     show_progress $total_lines $total_lines
     echo ""
-	
+
+    log_action "MD5 processing complete: $TOTAL_CHANGES changes" "INFO"
     save_results "$md5_file" "$backup_file" "$temp_file"
 }
 
