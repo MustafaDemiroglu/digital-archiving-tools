@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: update_md5checksum.sh 
-# Version 9.4.1
+# Version 9.4.2
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -471,7 +471,7 @@ process_path_update_csv() {
 			unset 'PARTS[${#PARTS[@]}-1]'
 			dir_count=${#PARTS[@]}
 			if (( dir_count >= 4 )); then
-				key="${PARTS[1]}/${PARTS[2]}/${PARTS[3]}"
+				key="${PARTS[0]}/${PARTS[1]}/${PARTS[2]}/${PARTS[3]}"
 			else
 				key="${PARTS[0]}/${PARTS[1]}/${PARTS[2]}"
 			fi
