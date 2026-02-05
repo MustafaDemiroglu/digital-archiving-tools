@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: update_md5checksum.sh 
-# Version 9.4.0
+# Version 9.4.1
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -465,9 +465,16 @@ process_path_update_csv() {
             local file_path="${BASH_REMATCH[2]}"
             local line_handled=false
 
-			# Extract first 3 path segments as lookup key
+			# Extract first 3 path segments as lookup key without secure or fremd
 			local key
-            key=$(echo "$file_path" | cut -d'/' -f1-4)
+			IFS='/' read -ra PARTS <<< "$file_path"
+			unset 'PARTS[${#PARTS[@]}-1]'
+			dir_count=${#PARTS[@]}
+			if (( dir_count >= 4 )); then
+				key="${PARTS[1]}/${PARTS[2]}/${PARTS[3]}"
+			else
+				key="${PARTS[0]}/${PARTS[1]}/${PARTS[2]}"
+			fi
 			
             # Check for deletion first
             if [[ -n "${FAST_DELETE[$key]}" ]]; then
