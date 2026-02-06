@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: update_md5checksum.sh 
-# Version 9.4.4
+# Version 9.4.6
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -337,7 +337,6 @@ process_renamed_files_csv() {
 	# Track actually renamed paths
     declare -A RENAMED_PATHS=()
     
-    output_and_log "$(printf '=%.0s' {1..60})"
     info "Starting MD5 file processing..."
     
     # Create temporary file for output
@@ -433,14 +432,13 @@ process_path_update_csv() {
     
     TOTAL_CHANGES=0
     
-    output_and_log "$(printf '=%.0s' {1..60})"
-    info "Starting  MD5 file processing..."
+    info "Starting MD5 file processing..."
     
     # Create temporary file for output
     local temp_file
     temp_file=$(mktemp)
     
-	# Fast lookup Maps (3-level path index)
+	# Fast lookup Maps (3 or 4 -level path index)
 	declare -A FAST_DELETE
     declare -A FAST_UPDATE
 
@@ -487,7 +485,7 @@ process_path_update_csv() {
 			
             # Check for deletion first
             if [[ -n "${FAST_DELETE[$key]}" ]]; then
-                [ "$VERBOSE" = true ] && [ $((TOTAL_CHANGES % 100)) -eq 0 ] && info "Deleted: $file_path"
+                #[ "$VERBOSE" = true ] && [ $((TOTAL_CHANGES % 100)) -eq 0 ] && info "Deleted: $file_path"
                 #log_action "Deleted MD5 entry: $file_path"
                 TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
                 line_handled=true
@@ -506,7 +504,7 @@ process_path_update_csv() {
 
                 FILE_COUNTERS["$key"]=$((counter + 1))
 
-                [ "$VERBOSE" = true ] && [ $((TOTAL_CHANGES % 100)) -eq 0 ] && info "Updated: $(basename "$file_path") → $(basename "$new_path")"
+                #[ "$VERBOSE" = true ] && [ $((TOTAL_CHANGES % 100)) -eq 0 ] && info "Updated: $(basename "$file_path") → $(basename "$new_path")"
                 #log_action "Updated MD5 entry: $file_path → $new_path"
                 TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
                 line_handled=true
