@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ###############################################################################
-# Script Name : search_folder_status.sh
+# Script Name : search_folder_status_with_list.sh
 # Version     : 2.0
 # Author      : Mustafa Demiroglu
 # Purpose     : 

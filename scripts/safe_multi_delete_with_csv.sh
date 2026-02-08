@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: safe_multi_delete_with_csv.sh
-# Version: 7.0
+# Version: 7.1.1
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 #
@@ -22,12 +22,20 @@
 #   - Always writes logs:
 #       * delete_log_YYYYMMDD_HHMMSS.txt
 #       * delete_errors_YYYYMMDD_HHMMSS.txt
+#       * dirs_not_found_to_delete_YYYYMMDD_HHMMSS.list
 #   - Interactive preview & confirmation in real mode (even without -v).
+#
+# CSV format note:
+#   - If a second column exists, ONLY rows with value "delete" will be processed.
+#   - If there is no second column (plain list), all rows will be treated as delete.
 #
 # Usage:
 #   ./safe_multi_delete_with_csv.sh -f list.csv -n
 #   ./safe_multi_delete_with_csv.sh --file files.txt -p -v
 #
+# Don't forget:
+#   - to use header, if u dont't have an header just write an empty first line or anything to first line
+# 
 # Options:
 #   -f, --file <path>  : CSV/TXT/List file to process
 #   -n, --dry-run      : Dry run mode (no deletions, only prints actions)
@@ -47,10 +55,12 @@ SEP=$'\t'   # will be auto-detected
 NOWSTAMP="$(date +%Y%m%d_%H%M%S)"
 LOGFILE="delete_log_${NOWSTAMP}.txt"
 ERRFILE="delete_errors_${NOWSTAMP}.txt"
+NOTFOUND_FILE="dirs_not_found_to_delete_${NOWSTAMP}.list"
+
 
 # --------------------------- Helpers & Logging -------------------------------
 
-print_help() { sed -n '2,60p' "$0"; }
+print_help() { sed -n '2,70p' "$0"; }
 
 log() {  # always echo + append to log
   echo "$*" | tee -a "$LOGFILE"
@@ -287,6 +297,16 @@ log "Error file: $ERRFILE"
 # Collect candidates (normalized)
 mapfile -t CANDIDATES < <(collect_delete_candidates)
 
+# Collect NOT FOUND paths (single responsibility)
+for f in "${CANDIDATES[@]}"; do
+  [[ ! -e "$f" ]] && echo "$f" >> "$NOTFOUND_FILE"
+done
+
+if [[ -s "$NOTFOUND_FILE" ]]; then
+  log "Not found paths written to: $NOTFOUND_FILE"
+fi
+
+# ------------------------------ DRY RUN --------------------------------------
 if $DRYRUN; then
   log "==== DRY RUN MODE ===="
   log "No files will be deleted. These are the planned actions:"
@@ -307,7 +327,10 @@ fi
 
 # Filter to existing files only for deletion
 EXISTING=()
-for f in "${CANDIDATES[@]}"; do [[ -e "$f" ]] && EXISTING+=("$f"); done
+for f in "${CANDIDATES[@]}"; do
+  [[ -e "$f" ]] && EXISTING+=("$f")
+done
+
 if ((${#EXISTING[@]} == 0)); then
   log "Nothing to delete after re-check."
   echo "Done. Logs written to $LOGFILE, errors to $ERRFILE."
