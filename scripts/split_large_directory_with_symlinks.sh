@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: split_large_directory_with_symlinks.sh
-# Version:1.4.0
+# Version:2.1.0
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 # License: MIT
@@ -18,7 +18,7 @@
 #
 #   This script:
 #     - DOES NOT modify the original archive directory
-#     - Creates a *_split directory next to it
+#     - Creates a *_split directory next to it, if already exists deletes first the old one
 #     - Splits first-level subdirectories into groups (default: 9000)
 #     - Creates symbolic links for each group
 #
@@ -192,6 +192,13 @@ BASE_NAME="$(basename "$REAL_PATH")"
 PARENT_DIR="$(dirname "$REAL_PATH")"
 SPLIT_DIR="${PARENT_DIR}/${BASE_NAME}_split"
 
+# Check if split directory already exists, and if so, remove it
+if [ -d "$SPLIT_DIR" ]; then
+    run_cmd "rm -rf \"$SPLIT_DIR\""
+    info "Existing split directory removed: $SPLIT_DIR"
+fi
+
+# Create the new split directory
 run_cmd "mkdir -p \"$SPLIT_DIR\""
 info "Split directory: $SPLIT_DIR"
 
