@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: hstam_architekturzeichnungen_restructure.sh
-# Version: 5.1.1
+# Version: 5.2.0
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 #
@@ -240,6 +240,42 @@ normalize_signature() {
 }
 
 ###############################################################################
+# Normalize folder reference to file pattern
+# Example:
+#   p_ii_7496--1   → p_ii_7496_001
+#   p_ii_7497--8r  → p_ii_7497_008r
+###############################################################################
+normalize_reference_pattern() {
+    local folder_name="$1"
+    folder_name="$(basename "$folder_name")"
+
+    local pattern="${folder_name/--/_}"
+
+    if [[ "$pattern" =~ ^(.*_)([0-9]+)([a-z]?)$ ]]; then
+        local prefix="${BASH_REMATCH[1]}"
+        local num="${BASH_REMATCH[2]}"
+        local suffix="${BASH_REMATCH[3]}"
+        printf -v num "%03d" "$num"
+        pattern="${prefix}${num}${suffix}"
+    fi
+
+    echo "$pattern"
+}
+
+###############################################################################
+# Check if file matches folder architecture reference
+###############################################################################
+file_matches_reference() {
+    local file="$1"
+    local folder="$2"
+
+    local expected
+    expected="$(normalize_reference_pattern "$folder")"
+
+    [[ "$(basename "$file")" == *"$expected"* ]]
+}
+
+###############################################################################
 # PROCESS 1: CSV TRANSFORMATION
 ###############################################################################
 
@@ -468,7 +504,7 @@ process_move_cepheus() {
 							echo "Moved: $oldfile -> $dst_new/"
 						fi
 						
-						if [[ "$(basename "$oldfile")" != *"$n"* ]]; then
+						if ! file_matches_reference "$oldfile" "$dst_new"; then
                             echo "name_mismatch;$oldfile;$dst_new" >> "$CSV_SUSPECT_FILES"
                         fi
 					fi
@@ -479,14 +515,15 @@ process_move_cepheus() {
 		# CASE 2: Architekturzeichnung folder ist empty
 		else
 			shopt -s nullglob
-            for oldfile in "$src_old"/*"$n"*; do
-                [[ ! -f "$oldfile" ]] && continue
-
-                if exec_cmd mv "$oldfile" "$dst_new/"; then
-                    echo "$oldfile;${dst_new}/$(basename "$oldfile")" >> "$CSV_RENAMED"
-                    echo "no_arch_reference;$oldfile;$dst_new" >> "$CSV_SUSPECT_FILES"
-                    count_moved=$((count_moved + 1))
-                fi
+            for oldfile in "$src_old"/*; do
+                [[ ! -f "$oldfile" ]] && continue	
+				if file_matches_reference "$oldfile" "$dst_new"; then
+					if exec_cmd mv "$oldfile" "$dst_new/"; then
+						echo "$oldfile;${dst_new}/$(basename "$oldfile")" >> "$CSV_RENAMED"
+						echo "no_arch_reference;$oldfile;$dst_new" >> "$CSV_SUSPECT_FILES"
+						count_moved=$((count_moved + 1))
+					fi
+				fi	
             done
             shopt -u nullglob
 		fi	
@@ -542,7 +579,7 @@ process_move_netapp() {
 							echo "Moved: $oldfile -> $dst_new/"
 						fi
 						
-						if [[ "$(basename "$oldfile")" != *"$n"* ]]; then
+						if ! file_matches_reference "$oldfile" "$dst_new"; then
                             echo "name_mismatch;$oldfile;$dst_new" >> "$CSV_SUSPECT_FILES"
                         fi
 					fi
@@ -560,7 +597,7 @@ process_move_netapp() {
 								echo "Moved thumb: $thumbfile -> $dst_new/thumbs/"
 							fi
 							
-							if [[ "$(basename "$thumbfile")" != *"$n"* ]]; then
+							if ! file_matches_reference "$thumbfile" "$dst_new"; then
                                 echo "name_mismatch;$thumbfile;$dst_new/thumbs" >> "$CSV_SUSPECT_FILES"
                             fi
 						fi
@@ -572,21 +609,25 @@ process_move_netapp() {
 		# CASE 2: Architekturzeichnung is empty
 		else
 			shopt -s nullglob
-            for oldfile in "$src_old"/*"$n"*; do
+            for oldfile in "$src_old"/*; do
                 [[ ! -f "$oldfile" ]] && continue
-                if exec_cmd mv "$oldfile" "$dst_new/" 2>/dev/null; then
-                    count_moved=$((count_moved + 1))
-                    echo "no_arch_reference;$oldfile;$dst_new" >> "$CSV_SUSPECT_FILES"
-                fi
+				if file_matches_reference "$oldfile" "$dst_new"; then
+					if exec_cmd mv "$oldfile" "$dst_new/" 2>/dev/null; then
+						count_moved=$((count_moved + 1))
+						echo "no_arch_reference;$oldfile;$dst_new" >> "$CSV_SUSPECT_FILES"
+					fi
+				fi
             done
 
             if [[ -d "$src_old/thumbs" ]]; then
                 for thumbfile in "$src_old"/thumbs/*"$n"*; do
                     [[ ! -f "$thumbfile" ]] && continue
-                    if exec_cmd mv "$thumbfile" "$dst_new/thumbs/" 2>/dev/null; then
-                        count_thumbs=$((count_thumbs + 1))
-                        echo "no_arch_reference;$thumbfile;$dst_new/thumbs" >> "$CSV_SUSPECT_FILES"
-                    fi
+					if file_matches_reference "$thumbfile" "$dst_new"; then
+						if exec_cmd mv "$thumbfile" "$dst_new/thumbs/" 2>/dev/null; then
+							count_thumbs=$((count_thumbs + 1))
+							echo "no_arch_reference;$thumbfile;$dst_new/thumbs" >> "$CSV_SUSPECT_FILES"
+						fi
+					fi
                 done
             fi
             shopt -u nullglob
