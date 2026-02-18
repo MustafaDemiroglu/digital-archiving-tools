@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: update_md5checksum.sh 
-# Version 9.4.6
+# Version 9.4.7
 # Author: Mustafa Demiroglu
 #
 # Description:
