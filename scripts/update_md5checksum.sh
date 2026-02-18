@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: update_md5checksum.sh 
-# Version 9.4.8
+# Version 9.5.0
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -314,8 +314,7 @@ load_csv_instructions() {
 # Description:
 #   Simple rename process for MD5 files
 #   Reads CSV: old_path,new_path
-#   Finds old_path in MD5 file
-#   Replaces with new_path
+#   Finds old_path in MD5 file replaces with new_path
 #   Hash stays the same
 ###############################################################################
 process_renamed_files_csv() {
@@ -340,6 +339,7 @@ process_renamed_files_csv() {
     fi
     
     TOTAL_CHANGES=0
+	TOTAL_MD5_LINES=0
 	
 	# Track actually renamed paths
     declare -A RENAMED_PATHS=()
@@ -350,46 +350,49 @@ process_renamed_files_csv() {
     local temp_file
     temp_file=$(mktemp)
     
-    # Single pass through MD5 file
     local line_num=0
-    while IFS= read -r md5_line; do
-        line_num=$((line_num + 1))
-		TOTAL_MD5_LINES=$((TOTAL_MD5_LINES + 1))
-         
-		# Parse MD5 line: <hash><space><path>
-		if [[ "$md5_line" =~ ^([a-f0-9A-F]{32})[[:space:]]+(.+)$ ]]; then	
-            local hash="${BASH_REMATCH[1]}"
-            local file_path="${BASH_REMATCH[2]}"
-            
-			# normalize path
-			file_path="${file_path//$'\r'/}"
-            file_path="$(printf '%s' "$file_path" | sed 's/[[:space:]]*$//')"
+    
+	{
+        while IFS= read -r md5_line; do
+            line_num=$((line_num + 1))
+            TOTAL_MD5_LINES=$((TOTAL_MD5_LINES + 1))
 
-            # Check if this path is in our map            
-			if [[ -n "${PATH_MAP[$file_path]+_}" ]]; then
-			
-                local new_path="${PATH_MAP[$file_path]}"
-				
-				# Write hash + new path to temp file
-                echo "$hash  $new_path" >> "$temp_file"
-				
-                log_action "Renamed full path in MD5: $file_path → $new_path"
-                TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
-				RENAMED_PATHS["$file_path"]=1
-				               
-				[ "$VERBOSE" = true ] && success "Line $line_num: $file_path → $new_path"               
-			else 	# No match - keep original line
-                echo "$md5_line" >> "$temp_file"
+            # Parse MD5 line: <hash><space><path>
+            if [[ "$md5_line" =~ ^([a-f0-9A-F]{32})[[:space:]]+(.+)$ ]]; then
+                local hash="${BASH_REMATCH[1]}"
+                local file_path="${BASH_REMATCH[2]}"
+
+                # Normalize path (pure bash trim, no sed)
+                file_path="${file_path//$'\r'/}"
+                file_path="${file_path%"${file_path##*[![:space:]]}"}"
+
+                # Check if this path is in our map
+                if [[ -n "${PATH_MAP[$file_path]+_}" ]]; then
+                    local new_path="${PATH_MAP[$file_path]}"
+
+                    echo "$hash  $new_path"
+
+                    log_action "Renamed full path in MD5: $file_path → $new_path"
+
+                    TOTAL_CHANGES=$((TOTAL_CHANGES + 1))
+                    RENAMED_PATHS["$file_path"]=1
+
+                    [ "$VERBOSE" = true ] && \
+                        success "Line $line_num: $file_path → $new_path"
+                else
+                    echo "$md5_line"
+                fi
+            else
+                echo "$md5_line"
             fi
-        else		# Not MD5 format - keep as is
-            echo "$md5_line" >> "$temp_file"
-        fi
-		
-		# Show progress every 1000 lines
-		if [ $((line_num % 1000)) -eq 0 ]; then
-			show_progress $line_num $total_lines
-		fi
-    done < "$md5_file"
+
+            # Progress every 1000 lines
+            if (( line_num % 1000 == 0 )); then
+                show_progress "$line_num" "$total_lines"
+            fi
+
+        done < "$md5_file"
+    } > "$temp_file"
     
     show_progress $total_lines $total_lines
     echo ""
