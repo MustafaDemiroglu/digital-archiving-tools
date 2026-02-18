@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: update_md5checksum.sh 
-# Version 9.5.0
+# Version 9.5.1
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -357,6 +357,11 @@ process_renamed_files_csv() {
             line_num=$((line_num + 1))
             TOTAL_MD5_LINES=$((TOTAL_MD5_LINES + 1))
 
+			# Show progress every 5000 lines
+			if [ $((line_num % 5000)) -eq 0 ]; then
+				show_progress $line_num $total_lines
+			fi
+
             # Parse MD5 line: <hash><space><path>
             if [[ "$md5_line" =~ ^([a-f0-9A-F]{32})[[:space:]]+(.+)$ ]]; then
                 local hash="${BASH_REMATCH[1]}"
@@ -384,11 +389,6 @@ process_renamed_files_csv() {
                 fi
             else
                 echo "$md5_line"
-            fi
-
-            # Progress every 1000 lines
-            if (( line_num % 1000 == 0 )); then
-                show_progress "$line_num" "$total_lines"
             fi
 
         done < "$md5_file"
