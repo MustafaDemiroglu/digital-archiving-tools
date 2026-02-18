@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: update_md5checksum.sh 
-# Version 9.4.7
+# Version 9.4.8
 # Author: Mustafa Demiroglu
 #
 # Description:
@@ -302,19 +302,11 @@ load_csv_instructions() {
     log_action "CSV loaded: ${#PATH_MAP[@]} updates, ${#DELETION_PATHS[@]} deletions" "INFO"
 	
 	# Global stop: If CSV has no actionable instructions, terminate script
-    if [ "$csv_type" = "simple_rename" ]; then
-        if [ ${#PATH_MAP[@]} -eq 0 ]; then
-            info "CSV contains 0 rename instructions → no work to do. Stopping script."
-            log_action "CSV empty → script stopped logically." "INFO"
-            exit 0
-        fi
-    else
-        if [ ${#PATH_MAP[@]} -eq 0 ] && [ ${#DELETION_PATHS[@]} -eq 0 ]; then
-            info "CSV contains 0 path updates and 0 deletions → no work to do. Stopping script."
-            log_action "CSV empty → script stopped logically." "INFO"
-            exit 0
-        fi
-    fi
+	if [ "$line_count" -eq 0 ]; then
+		info "CSV contains 0 instructions → no work to do. Stopping script."
+		log_action "CSV empty → script stopped logically." "INFO"
+		exit 0
+	fi
 }
 
 ###############################################################################
