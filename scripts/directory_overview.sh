@@ -20,7 +20,7 @@ if [ "$#" -ne 1 ]; then
 fi
 
 ROOT="$1"
-OUTPUT="directory_overview_report.csv_$(date '+%Y%m%d_%H%M%S')"
+OUTPUT="directory_overview_report_$(date '+%Y%m%d_%H%M%S').csv"
 TMP_FILE="/tmp/archive_sizes.$$"
 
 if [ ! -d "$ROOT" ]; then
@@ -40,7 +40,7 @@ du -b --apparent-size "$ROOT" 2>/dev/null | sort -V > "$TMP_FILE"
 TOTAL_DIRS=$(wc -l < "$TMP_FILE")
 echo "Total directories detected: $TOTAL_DIRS"
 
-# --- STEP 2: Convert bytes to human readable size function ---
+# Convert bytes to human readable size function ---
 human_readable() {
     local bytes=$1
     awk -v b="$bytes" 'BEGIN {
@@ -50,7 +50,9 @@ human_readable() {
     }'
 }
 
-# --- STEP 3: Process directories ---
+# --- STEP 2: Process directories ---
+CURRENT=0
+TOTAL_DIRS=${TOTAL_DIRS:-0}
 while IFS=$'\t' read -r SIZE DIR; do
 
 	CURRENT=$((CURRENT+1))
