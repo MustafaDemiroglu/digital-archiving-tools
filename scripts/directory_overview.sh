@@ -29,7 +29,7 @@ if [ ! -d "$ROOT" ]; then
 fi
 
 echo "Starting directory overview scan..."
-echo "Root path: $ROOT and Output file: $OUTPUT"
+echo "Root path: $ROOT"
 
 echo "path,first_level_subdirs,first_level_files,total_size_bytes" > "$OUTPUT"
 
@@ -60,7 +60,7 @@ while IFS=$'\t' read -r SIZE DIR; do
 
 	# Progress output (overwrite same line)
     printf "\rProcessing: %d%% (%d/%d)" "$PERCENT" "$CURRENT" "$TOTAL_DIRS"
-	
+	echo ""
     # Count first-level subdirectories
     SUBDIR_COUNT=$(find "$DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
 
