@@ -1,108 +1,144 @@
-#!/usr/bin/env bash
+#!/bin/bash
+# see library for needed parameters
 
 set -euo pipefail
 
-# Logging (Kitodo Standard)
+# Source Kitodo library
+if ! source "$(dirname "${0}")"/lib_hla_kitodo.sh; then
+    echo "Failed to include library file! please check."
+    exit 5
+fi
+
+search_folder_vze
+
+# Logging , can be deleted if no needed (ask Max)
 log_info()  { echo "[INFO]  $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
 log_warn()  { echo "[WARN]  $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
 log_error() { echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
 
-
-# Argument check
-if [ "$#" -ne 1 ]; then
-    log_error "Usage: $0 /path/to/digitalisat_folder"
-    exit 1
-fi
-
-WORK_DIR="$1"
-
-if [ ! -d "$WORK_DIR" ]; then
-    log_error "Directory does not exist: $WORK_DIR"
-    exit 1
-fi
-
-META_FILE="$WORK_DIR/meta.xml"
-
-if [ ! -f "$META_FILE" ]; then
-    log_error "meta.xml not found in $WORK_DIR"
-    exit 1
-fi
-
-log_info "Starting rename process for $WORK_DIR"
-
-# Read new signature from meta.xml
-NEW_UNIT=$(xmllint --xpath \
-"string(//metadata[@name='unitIDCUSTOM'])" \
-"$META_FILE" 2>/dev/null || true)
-
-if [ -z "$NEW_UNIT" ]; then
-    log_error "unitIDCUSTOM not found or empty in meta.xml"
-    exit 1
-fi
-
-# hstam/0test/4 → only last segment
-NEW_SIG="${NEW_UNIT##*/}"
-
-# Determine old signature from folder name
-OLD_SIG=$(basename "$WORK_DIR")
-PARENT_DIR=$(dirname "$WORK_DIR")
-
-log_info "Old signature (folder name): $OLD_SIG"
-log_info "New signature (metadata):    $NEW_SIG"
-
-# Compare and act
-# If no change → exit clean
-if [ "$OLD_SIG" = "$NEW_SIG" ]; then
-    log_info "No rename necessary. Signatures match."
+# 1-Only run for Unbekannt but renamed processes
+if [[ ! "${kitodo_processtitle}" =~ ^Rename_ ]]; then
+    log_info "Process title does not start with 'Unbekannt_'. Nothing to do."
     exit 0
 fi
 
-TARGET_DIR="$PARENT_DIR/$NEW_SIG"
+log_info "Processing Unbekannt workflow: ${kitodo_processtitle}"
 
-if [ -e "$TARGET_DIR" ]; then
-    log_error "Target directory already exists: $TARGET_DIR"
+# 2-Extract OLD and NEW full signature path
+OLD_FULL_SIG="${meta_unitIDCUSTOM}"
+NEW_FULL_SIG="${kitodo_processtitle#Rename_}"
+
+if [[ -z "${OLD_FULL_SIG}" ]]; then
+    log_error "meta_unitIDCUSTOM is empty. Aborting."
     exit 1
 fi
 
+log_info "Old full signature: ${OLD_FULL_SIG}"
+log_info "New full signature: ${NEW_FULL_SIG}"
 
-# Rename folder
+if [[ "${OLD_FULL_SIG}" == "${NEW_FULL_SIG}" ]]; then
+    log_info "No signature name change detected. Nothing to do."
+    exit 0
+fi
+
+OLD_SIG="${OLD_FULL_SIG##*/}"
+NEW_SIG="${NEW_FULL_SIG##*/}"
+
+log_info "Old leaf signature: ${OLD_SIG}"
+log_info "New leaf signature: ${NEW_SIG}"
+
+# 3-Locate current folder via delivery md5
+md5_file="${base_path_hdd_ingest_ceph}/${hdd_root_folder}/${meta_delivery}.md5"
+
+if [[ ! -f "${md5_file}" ]]; then
+    log_error "MD5 file not found: ${md5_file}"
+    exit 2
+fi
+
+CURRENT_FOLDER="${base_path_hdd_ingest_ceph}/${full_hdd_folders}/${OLD_FULL_SIG}"
+TARGET_FOLDER="${base_path_hdd_ingest_ceph}/${full_hdd_folders}/${NEW_FULL_SIG}"
+
+if [[ ! -d "${CURRENT_FOLDER}" ]]; then
+    log_error "Current folder not found: ${CURRENT_FOLDER}"
+    exit 3
+fi
+
+if [[ -e "${TARGET_FOLDER}" ]]; then
+    log_error "Target folder already exists: ${TARGET_FOLDER}"
+    exit 4
+fi
+
+# 4-Rename folder
 log_info "Renaming folder..."
-mv "$WORK_DIR" "$TARGET_DIR"
-log_info "Folder renamed to $TARGET_DIR"
+mv "${CURRENT_FOLDER}" "${TARGET_FOLDER}"
+log_info "Folder renamed."
 
-
-# Rename contained files (prefix replacement)
+# 5-Rename contained files (_OLD_ → _NEW_)
 log_info "Renaming contained files..."
 
-for FILE in "$TARGET_DIR"/*; do
-    [ -f "$FILE" ] || continue
+find "${TARGET_FOLDER}" -type f | while read -r FILE; do
+    BASENAME="$(basename "$FILE")"
+    DIRNAME="$(dirname "$FILE")"
 
-    BASENAME=$(basename "$FILE")
-
-	# match only _OLD_SIG_
-    if [[ "$BASENAME" =~ _${OLD_SIG}_ ]]; then
-        NEW_NAME="$(echo "$BASENAME" | sed "s/_${OLD_SIG}_/_${NEW_SIG}_/g")"
-        mv "$FILE" "$TARGET_DIR/$NEW_NAME"
-        log_info "Renamed file: $BASENAME → $NEW_NAME"
+    if [[ "${BASENAME}" == *"_${OLD_SIG}_"* ]]; then
+        NEW_NAME="${BASENAME//_${OLD_SIG}_/_${NEW_SIG}_}"
+        mv "${FILE}" "${DIRNAME}/${NEW_NAME}"
+        log_info "Renamed file: ${BASENAME} → ${NEW_NAME}"
     fi
 done
 
-# Update MD5 file
+# 6-Update MD5 file (locked)
 log_info "Updating MD5 file..."
 
-MD5_FILE=$(find "$PARENT_DIR" -maxdepth 1 -name "*.md5" | head -n 1 || true)
+(
+    flock --exclusive --timeout 300 200 || exit 1
 
-if [ -n "$MD5_FILE" ]; then
-    # replace /OLD_SIG/ only as path segment
     sed -i \
         -e "s|/${OLD_SIG}/|/${NEW_SIG}/|g" \
         -e "s|_${OLD_SIG}_|_${NEW_SIG}_|g" \
-        "$MD5_FILE"
+        "${md5_file}"
 
-    log_info "MD5 updated: $(basename "$MD5_FILE")"
-else
-    log_warn "No MD5 file found."
+) 200>"${md5_file}.lock"
+
+log_info "MD5 file updated."
+
+# 7-Update meta.xml (remove Unbekannt_ prefix)
+META_FILE="${kitodo_metadata_path}/${kitodo_processid}/meta.xml"
+
+if [[ ! -f "${META_FILE}" ]]; then
+    log_error "meta.xml not found: ${META_FILE}"
+    exit 5
 fi
 
-log_info "Rename process completed successfully."
+# read arcinsysid
+ARCINSYS_ID=$(xmlstarlet sel -N kitodo="http://meta.kitodo.org/v1/" -t -v \
+"//kitodo:metadata[@name='ArcinsysID']" \
+"${META_FILE}" 2>/dev/null || true)
+
+if [[ -n "${ARCINSYS_ID}" && "${ARCINSYS_ID}" =~ ^v[0-9]+$ ]]; then
+    log_info "arcinsysid detected (${ARCINSYS_ID}). Special handling branch."
+
+    if [[ "${meta_document_type}" == "Unknown" ]]; then
+        log_info "Updating title for Unknown process (arcinsys mode)..."
+
+        # update metadata 
+		# update metadata for Unknown process
+        # Example of how to modify the title based on arcinsysid
+        # Additional logic here, if necessary
+    fi
+
+else
+    log_info "No arcinsysid found. Using default metadata update."
+
+	# Update unitIDCUSTOM and document_type
+    xmlstarlet ed -L \
+		-N kitodo="http://meta.kitodo.org/v1/" \
+		-u "//kitodo:metadata[@name='unitIDCUSTOM']/text()" -v "${NEW_FULL_SIG}" \
+		-u "//kitodo:metadata[@name='document_type']/text()" -v "NotKnown" \
+		"${META_FILE}"
+fi
+
+log_info "meta.xml update completed."
+
+log_info "Rename workflow completed successfully."
 exit 0
