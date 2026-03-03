@@ -27,8 +27,10 @@ for dir in ${BASE_DIR}/*; do
                     rm -rf "${signature}/thumb"
 
                     # Step 3: Move all images from 'max' folder to the signature folder
-                    echo "    Moving images from 'max' folder to signature folder..."
-                    mv "${signature}/max"/* "${signature}/"
+					if [[ "$(ls -A ${signature}/max)" ]]; then
+                        echo "    Moving images from 'max' folder to signature folder..."
+                        mv "${signature}/max"/* "${signature}/"
+                    else
 
                     # Step 4: Remove the 'max' folder
                     echo "    Deleting 'max' folder..."
