@@ -16,9 +16,9 @@ log_info()  { echo "[INFO]  $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
 log_warn()  { echo "[WARN]  $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
 log_error() { echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
 
-# 1-Only run for Unbekannt but renamed processes
-if [[ ! "${kitodo_processtitle}" =~ ^Rename_ ]]; then
-    log_info "Process title does not start with 'Unbekannt_'. Nothing to do."
+# 1-Only run for renamed processtitle as Umbenennen_
+if [[ ! "${kitodo_processtitle}" =~ ^Umbenennen_ ]]; then
+    log_info "Process title does not start with 'Umbenennen_'. Nothing to do."
     exit 0
 fi
 
@@ -26,7 +26,7 @@ log_info "Processing Unbekannt workflow: ${kitodo_processtitle}"
 
 # 2-Extract OLD and NEW full signature path
 OLD_FULL_SIG="${meta_unitIDCUSTOM}"
-NEW_FULL_SIG="${kitodo_processtitle#Rename_}"
+NEW_FULL_SIG="${kitodo_processtitle#Umbenennen_}"
 
 if [[ -z "${OLD_FULL_SIG}" ]]; then
     log_error "meta_unitIDCUSTOM is empty. Aborting."
@@ -87,7 +87,43 @@ find "${TARGET_FOLDER}" -type f | while read -r FILE; do
     fi
 done
 
-# 6-Update MD5 file (locked)
+# 6-Rename derivate images (_OLD_ → _NEW_)
+log_info "Renaming derivative images (max/thumbs/tiff)..."
+
+final_kitodo_image_path="${kitodo_metadata_path}/${kitodo_processid}/images"
+
+for SUBDIR in "max" "thumbs" "tiff"; do
+
+    IMG_PATH="${final_kitodo_image_path}/${SUBDIR}"
+
+    if [[ ! -d "${IMG_PATH}" ]]; then
+        log_warn "Image folder not found, skipping: ${IMG_PATH}"
+        continue
+    fi
+
+    log_info "Processing image folder: ${IMG_PATH}"
+
+    find "${IMG_PATH}" -type f | while read -r FILE; do
+        BASENAME="$(basename "$FILE")"
+        DIRNAME="$(dirname "$FILE")"
+
+        if [[ "${BASENAME}" == *"_${OLD_SIG}_"* ]]; then
+            NEW_NAME="${BASENAME//_${OLD_SIG}_/_${NEW_SIG}_}"
+
+            # collision protection
+            if [[ -e "${DIRNAME}/${NEW_NAME}" ]]; then
+                log_warn "Target image file already exists, skipping: ${NEW_NAME}"
+                continue
+            fi
+
+            mv "${FILE}" "${DIRNAME}/${NEW_NAME}"
+            log_info "Renamed image: ${BASENAME} → ${NEW_NAME}"
+        fi
+    done
+
+done
+
+# 7-Update MD5 file (locked)
 log_info "Updating MD5 file..."
 
 (
