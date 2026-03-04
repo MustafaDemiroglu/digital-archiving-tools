@@ -38,7 +38,7 @@ find_image_files () {
 
 # shellcheck disable=SC2154
 # variable referenced from library
-hdd_folder_path="${base_path_hdd_ingest_ceph}/${hdd_root_folder}/${hdd_sub_folder}/${full_sig_path}"
+hdd_folder_path="${folder_path}"
 find_image_files "${hdd_folder_path}" || exit 1
 
 # generate list for preview generation (only first image from generation list)
