@@ -55,8 +55,12 @@ if [[ ! -f "${md5_file}" ]]; then
     exit 2
 fi
 
-CURRENT_FOLDER="${base_path_hdd_ingest_ceph}/${full_hdd_folders}/${OLD_FULL_SIG}"
-TARGET_FOLDER="${base_path_hdd_ingest_ceph}/${full_hdd_folders}/${NEW_FULL_SIG}"
+# Use real detected folder from search_folder_vze()
+CURRENT_FOLDER="${folder_path}"
+
+# Determine parent directory dynamically (secure / fremdarchivalien safe)
+PARENT_DIR="$(dirname "${CURRENT_FOLDER}")"
+TARGET_FOLDER="${PARENT_DIR}/${NEW_SIG}"
 
 if [[ ! -d "${CURRENT_FOLDER}" ]]; then
     log_error "Current folder not found: ${CURRENT_FOLDER}"
