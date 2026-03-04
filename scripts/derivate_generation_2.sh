@@ -14,7 +14,7 @@ fi
 search_folder_vze
 
 if [[ -z "${folder_path}" ]]; then
-    echo "Could not determine real storage folder. Aborting."
+    echo "Could not determine real hdd storage folder. Aborting."
     exit 2
 fi
 
@@ -43,7 +43,7 @@ find_image_files () {
 }
 
 # variable referenced from library
-find_image_files "${REAL_STORAGE_PATH}"
+find_image_files "${HDD_STORAGE_PATH}"
 
 # generate list for preview generation (only first image from generation list)
 head -n 1 "${generation_list_path}" > "${generation_list_path_only_preview}"
@@ -57,7 +57,7 @@ head -n 1 "${generation_list_path}" > "${generation_list_path_only_preview}"
 sg "${group}" -c "/usr/bin/python3 $(dirname "${0}")/generate_derivate.py \
 --profile sifi_git \
 --max_threads 1 \
---storage_path \"${REAL_STORAGE_PATH}\" \
+--storage_path \"${HDD_STORAGE_PATH}\" \
 --outbasefolder ${output_folder_path} \
 --outbasefolder_max max \
 --outbasefolder_thumb thumbs \
@@ -70,7 +70,7 @@ generate_derivate_exit_code="${?}"
 sg "${group}" -c "/usr/bin/python3 $(dirname "${0}")/generate_derivate.py \
 --profile only_preview \
 --max_threads 1 \
---storage_path \"${REAL_STORAGE_PATH}\" \
+--storage_path \"${HDD_STORAGE_PATH}\" \
 --outbasefolder ${output_folder_path} \
 --outbasefolder_preview thumbs \
 --log_file ${logfile_path} \
