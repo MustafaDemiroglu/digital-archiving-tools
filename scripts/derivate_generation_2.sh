@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# all script need adleast the following parameter from kitodo: -p "(processid)" -t "(processtitle)" -d "${meta.document_type}" -u "${meta.unitIDCUSTOM}"
-# -a "${meta.archiveNameCUSTOM}" -s "${meta.stockUnitIDCUSTOM}" -x "${meta.accessrestrict}" -l "${meta.delivery}"
+# all script need adleast the following parameter from kitodo: # see library for needed parameters
+
+set -euo pipefail
 
 # sourcing library
 if ! source "$(dirname "${0}")"/lib_hla_kitodo.sh; then
@@ -9,18 +10,23 @@ if ! source "$(dirname "${0}")"/lib_hla_kitodo.sh; then
     exit 5
 fi
 
-# disable shellcheck / used from external library
-# shellcheck disable=SC2154
+# Ensure real folder detection (secure/fremdarchivalien safe)
+search_folder_vze
+
+if [[ -z "${folder_path}" ]]; then
+    echo "Could not determine real storage folder. Aborting."
+    exit 2
+fi
+
+HDD_STORAGE_PATH="${folder_path}"
+
 kitodo_process_folder="${kitodo_metadata_path}/${kitodo_processid}/images"
 
 cd "${kitodo_process_folder}" || exit 1
 
 tmp_folder="/tmp/kitodo/${kitodo_processid}"
-
 mkdir -p "${tmp_folder}"
-
 output_folder_path="${kitodo_process_folder}"
-
 generation_list_path="${tmp_folder}/stuecke.txt"
 generation_list_path_only_preview="${tmp_folder}/stuecke_preview.txt"
 
@@ -36,33 +42,22 @@ find_image_files () {
     fi
 }
 
-# shellcheck disable=SC2154
 # variable referenced from library
-hdd_folder_path="${folder_path}"
-find_image_files "${hdd_folder_path}" || exit 1
+find_image_files "${REAL_STORAGE_PATH}"
 
 # generate list for preview generation (only first image from generation list)
 head -n 1 "${generation_list_path}" > "${generation_list_path_only_preview}"
 
-if [ "${jpg_quality}" == "" ]; then
-        jpg_quality=90
-fi
+# Default values
+: "${jpg_quality:=90}"
+: "${maxsize_x:=3500}"
+: "${maxsize_y:=3500}"
 
-if [ "${maxsize_x}" == "" ]; then
-        maxsize_x=3500
-fi
-
-if [ "${maxsize_y}" == "" ]; then
-        maxsize_y=3500
-fi
-
-# disable shellcheck / used from external library
 # generate derivate
-# shellcheck disable=SC2154
 sg "${group}" -c "/usr/bin/python3 $(dirname "${0}")/generate_derivate.py \
 --profile sifi_git \
 --max_threads 1 \
---storage_path ${hdd_folder_path} \
+--storage_path \"${REAL_STORAGE_PATH}\" \
 --outbasefolder ${output_folder_path} \
 --outbasefolder_max max \
 --outbasefolder_thumb thumbs \
@@ -71,13 +66,11 @@ sg "${group}" -c "/usr/bin/python3 $(dirname "${0}")/generate_derivate.py \
 
 generate_derivate_exit_code="${?}"
 
-# disable shellcheck / used from external library
 # generate single preview from first image
-# shellcheck disable=SC2154
 sg "${group}" -c "/usr/bin/python3 $(dirname "${0}")/generate_derivate.py \
 --profile only_preview \
 --max_threads 1 \
---storage_path ${hdd_folder_path} \
+--storage_path \"${REAL_STORAGE_PATH}\" \
 --outbasefolder ${output_folder_path} \
 --outbasefolder_preview thumbs \
 --log_file ${logfile_path} \
@@ -98,3 +91,6 @@ fi
 rm "${generation_list_path}"
 rm "${generation_list_path_only_preview}"
 rmdir "${tmp_folder}"
+
+echo "Derivate generation completed successfully."
+exit 0
