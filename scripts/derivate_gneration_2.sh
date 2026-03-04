@@ -38,7 +38,8 @@ find_image_files () {
 
 # shellcheck disable=SC2154
 # variable referenced from library
-find_image_files "${folder_path}" || exit 1
+hdd_folder_path="${base_path_hdd_ingest_ceph}/${hdd_root_folder}/${hdd_sub_folder}/${full_sig_path}"
+find_image_files "${hdd_folder_path}" || exit 1
 
 # generate list for preview generation (only first image from generation list)
 head -n 1 "${generation_list_path}" > "${generation_list_path_only_preview}"
@@ -61,7 +62,7 @@ fi
 sg "${group}" -c "/usr/bin/python3 $(dirname "${0}")/generate_derivate.py \
 --profile sifi_git \
 --max_threads 1 \
---storage_path ${folder_path} \
+--storage_path ${hdd_folder_path} \
 --outbasefolder ${output_folder_path} \
 --outbasefolder_max max \
 --outbasefolder_thumb thumbs \
@@ -76,7 +77,7 @@ generate_derivate_exit_code="${?}"
 sg "${group}" -c "/usr/bin/python3 $(dirname "${0}")/generate_derivate.py \
 --profile only_preview \
 --max_threads 1 \
---storage_path ${folder_path} \
+--storage_path ${hdd_folder_path} \
 --outbasefolder ${output_folder_path} \
 --outbasefolder_preview thumbs \
 --log_file ${logfile_path} \
