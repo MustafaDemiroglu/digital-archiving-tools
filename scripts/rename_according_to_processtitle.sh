@@ -174,7 +174,7 @@ else
     xmlstarlet ed -L \
 		-N kitodo="http://meta.kitodo.org/v1/" \
 		-u "//kitodo:metadata[@name='unitIDCUSTOM']/text()" -v "${NEW_FULL_SIG}" \
-		-u "//kitodo:metadata[@name='document_type']/text()" -v "NotKnown" \
+		#-u "//kitodo:metadata[@name='document_type']/text()" -v "NotKnown" \
 		"${META_FILE}"
 fi
 
