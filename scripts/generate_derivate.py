@@ -111,13 +111,12 @@ def recursive_chown_folder(path, local_group, local_logger):
             local_logger.info("Starting correction of folder group permissions recursively.")
             for root, directories, files in os.walk(path):
                 for directory in directories:
-                    full_dir_path = os.path.join(root, directory)  #test to fix chown
-                    stat_info = os.stat(full_dir_path)
+                    stat_info = os.stat(directory)
                     current_gid = stat_info.st_gid
                     if current_gid == group_gid:
                         local_logger.debug(f"Group already correct for: {directory} (Group: {local_group})")
                         continue  # Keine Änderung nötig
-                    shutil.chown(full_dir_path, group=local_group)  # test to fix chown 
+                    shutil.chown(directory, group=local_group) 
                 for file in files:
                     fname = os.path.join(root, file)
                     stat_info = os.stat(fname)

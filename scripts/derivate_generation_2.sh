@@ -1,8 +1,6 @@
 #!/bin/bash
 # see library for needed parameters
 
-set -euo pipefail
-
 # sourcing library
 if ! source "$(dirname "${0}")"/lib_hla_kitodo.sh; then
     echo "Failed to include library file! please check."
@@ -16,8 +14,6 @@ if [[ -z "${folder_path}" ]]; then
     echo "Could not determine real hdd storage folder. Aborting."
     exit 2
 fi
-
-HDD_STORAGE_PATH="${folder_path}"
 
 kitodo_process_folder="${kitodo_metadata_path}/${kitodo_processid}/images"
 
@@ -42,21 +38,16 @@ find_image_files () {
 }
 
 # variable referenced from library
-find_image_files "${HDD_STORAGE_PATH}"
+find_image_files "${folder_path}"
 
 # generate list for preview generation (only first image from generation list)
 head -n 1 "${generation_list_path}" > "${generation_list_path_only_preview}"
-
-# Default values
-: "${jpg_quality:=90}"
-: "${maxsize_x:=3500}"
-: "${maxsize_y:=3500}"
 
 # generate derivate
 sg "${group}" -c "/usr/bin/python3 $(dirname "${0}")/generate_derivate.py \
 --profile sifi_git \
 --max_threads 1 \
---storage_path ${HDD_STORAGE_PATH} \
+--storage_path ${folder_path} \
 --outbasefolder ${output_folder_path} \
 --outbasefolder_max max \
 --outbasefolder_thumb thumbs \
@@ -69,7 +60,7 @@ generate_derivate_exit_code="${?}"
 sg "${group}" -c "/usr/bin/python3 $(dirname "${0}")/generate_derivate.py \
 --profile only_preview \
 --max_threads 1 \
---storage_path ${HDD_STORAGE_PATH} \
+--storage_path ${folder_path} \
 --outbasefolder ${output_folder_path} \
 --outbasefolder_preview thumbs \
 --log_file ${logfile_path} \
@@ -92,4 +83,4 @@ rm "${generation_list_path_only_preview}"
 rmdir "${tmp_folder}"
 
 echo "Derivate generation completed successfully."
-exit 0
+exit 0 
