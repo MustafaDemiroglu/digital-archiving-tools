@@ -1,6 +1,5 @@
 #!/bin/bash
-
-# all script need adleast the following parameter from kitodo: # see library for needed parameters
+# see library for needed parameters
 
 set -euo pipefail
 
@@ -57,7 +56,7 @@ head -n 1 "${generation_list_path}" > "${generation_list_path_only_preview}"
 sg "${group}" -c "/usr/bin/python3 $(dirname "${0}")/generate_derivate.py \
 --profile sifi_git \
 --max_threads 1 \
---storage_path \"${HDD_STORAGE_PATH}\" \
+--storage_path ${HDD_STORAGE_PATH} \
 --outbasefolder ${output_folder_path} \
 --outbasefolder_max max \
 --outbasefolder_thumb thumbs \
@@ -70,7 +69,7 @@ generate_derivate_exit_code="${?}"
 sg "${group}" -c "/usr/bin/python3 $(dirname "${0}")/generate_derivate.py \
 --profile only_preview \
 --max_threads 1 \
---storage_path \"${HDD_STORAGE_PATH}\" \
+--storage_path ${HDD_STORAGE_PATH} \
 --outbasefolder ${output_folder_path} \
 --outbasefolder_preview thumbs \
 --log_file ${logfile_path} \
