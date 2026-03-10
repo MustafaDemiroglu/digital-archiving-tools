@@ -11,7 +11,7 @@ fi
 
 search_folder_vze
 
-# Logging , can be deleted if no needed (ask Max)
+# Logging , can be deleted if no needed
 log_info()  { echo "[INFO]  $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
 log_warn()  { echo "[WARN]  $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
 log_error() { echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
