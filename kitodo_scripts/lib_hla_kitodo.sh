@@ -152,7 +152,7 @@ esac
 relativ_path_ceph=$(grep "${full_sig_path}/" "${manifest_all}" | cut -d' ' -f3 | rev | cut -d'/' -f2- | rev | sort -u)
 
 # check if invoked scripts is one of the named one and if so skip checking for relative_path_ceph because not needed in this case
-if ! { [[ "${script_name}" == "secure_check" ]] || [[ "${script_name}" == "move_ingest2ceph" ]] || [[ "${script_name}" == "upload_checksum_file" ]] || [[ "${script_name}" == "rename_according_to_processtitle" ]] || [[ "${script_name}" == "derivate_generation_2" ]]; }; then
+if ! { [[ "${script_name}" == "secure_check" ]] || [[ "${script_name}" == "move_ingest2ceph" ]] || [[ "${script_name}" == "upload_checksum_file" ]] || [[ "${script_name}" == "rename" ]] || [[ "${script_name}" == "notification" ]] || [[ "${script_name}" == "derivate_generation_2" ]]; }; then
     if [[ "${relativ_path_ceph}" == "" ]]; then
         echo "Full Signature Path ${full_sig_path} not found in manifest ${manifest_all}."
         echo "Manually intervention required! Aborting."
