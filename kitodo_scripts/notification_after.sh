@@ -112,10 +112,7 @@ EOF
 
 log_info "Sending rename notification mail to ${MAIL_TO}"
 
-echo "${MAIL_BODY}" | mail \
-    -s "${SUBJECT}" \
-    -a "FROM: ${MAIL_FROM}" \
-    "${MAIL_TO}"
+echo "${MAIL_BODY}" | mail -s "${SUBJECT}" -r "${MAIL_FROM}" "${MAIL_TO}"
 
 # 7. Delete rename.txt
 log_info "Removing rename.txt"

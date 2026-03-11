@@ -184,10 +184,7 @@ EOF
 
 log_info "Sending notification mail to ${MAIL_TO}"
 
-echo "${MAIL_BODY}" | mail \
-    -s "${SUBJECT}" \
-    -a "FROM: ${MAIL_FROM}" \
-    "${MAIL_TO}"
+echo "${MAIL_BODY}" | mail -s "${SUBJECT}" -r "${MAIL_FROM}" "${MAIL_TO}"
 
 # 6. Create rename.txt for Unknown processes
 
