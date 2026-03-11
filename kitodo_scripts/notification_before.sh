@@ -76,7 +76,7 @@ case "${HAUS}" in
         ;;
 esac
 
-MAIL_FROM="hla-repo@uni-marburg.de"
+#MAIL_FROM="hla-repo@uni-marburg.de"
 
 # 3- Build mail subject
 
@@ -184,7 +184,7 @@ EOF
 
 log_info "Sending notification mail to ${MAIL_TO}"
 
-echo "${MAIL_BODY}" | mail -s "${SUBJECT}" -r "${MAIL_FROM}" "${MAIL_TO}"
+echo "${MAIL_BODY}" | mail -s "${SUBJECT}" "${MAIL_TO}"
 
 # 6. Create rename.txt for Unknown processes
 
