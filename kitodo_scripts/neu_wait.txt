@@ -29,31 +29,20 @@ if [[ ! -n "${ARCINSYS_ID}" || ! "${ARCINSYS_ID}" =~ ^v[0-9]+$ ]]; then
             log_error "rename.txt and metadata signature mismatch!"
             exit 1
         fi
-
     fi
-
 fi
 
-###############################################################################
 # if nothing changed
-###############################################################################
-
 if [[ "${OLD_FULL_SIG}" == "${NEW_FULL_SIG}" ]]; then
-
     log_info "No signature name change detected."
-
     if [[ -f "${RENAME_FILE}" ]]; then
         rm -f "${RENAME_FILE}"
-        log_info "rename.txt removed."
+        log_info "rename.txt removed. Because no rename needed"
     fi
-
     exit 0
 fi
 
-###############################################################################
 # Split paths
-###############################################################################
-
 OLD_HAUS=$(echo "${OLD_FULL_SIG}" | cut -d'/' -f1)
 OLD_BESTAND=$(echo "${OLD_FULL_SIG}" | cut -d'/' -f2)
 OLD_SIG=$(echo "${OLD_FULL_SIG}" | cut -d'/' -f3)
@@ -62,10 +51,7 @@ NEW_HAUS=$(echo "${NEW_FULL_SIG}" | cut -d'/' -f1)
 NEW_BESTAND=$(echo "${NEW_FULL_SIG}" | cut -d'/' -f2)
 NEW_SIG=$(echo "${NEW_FULL_SIG}" | cut -d'/' -f3)
 
-###############################################################################
 # Locate folder
-###############################################################################
-
 CURRENT_FOLDER="${folder_path}"
 PARENT_DIR="$(dirname "${CURRENT_FOLDER}")"
 
@@ -74,9 +60,18 @@ PARENT_DIR="$(dirname "${CURRENT_FOLDER}")"
 # Prepare target directory structure if Haus / Bestand changed
 ###############################################################################
 
-INGEST_ROOT="${base_path_hdd_ingest_ceph}/${hdd_root_folder}"
+###############################################################################
+# Prepare target directory structure (secure / fremdarchivalien safe)
+###############################################################################
 
-TARGET_HAUS_DIR="${INGEST_ROOT}/${NEW_HAUS}"
+BASE_PREFIX="${CURRENT_FOLDER%/${OLD_HAUS}/${OLD_BESTAND}/${OLD_SIG}}"
+
+if [[ -z "${BASE_PREFIX}" ]]; then
+    log_error "Failed to determine ingest base path."
+    exit 1
+fi
+
+TARGET_HAUS_DIR="${BASE_PREFIX}/${NEW_HAUS}"
 TARGET_BESTAND_DIR="${TARGET_HAUS_DIR}/${NEW_BESTAND}"
 
 log_info "Ensuring target directory structure exists..."
