@@ -40,25 +40,60 @@ ARCINSYS_ID=$(xmlstarlet sel -N kitodo="http://meta.kitodo.org/v1/" -t -v \
 "//kitodo:metadata[@name='ArcinsysID']" \
 "${META_FILE}" 2>/dev/null || true)
 
-# 3-Extract OLD and NEW full signature path
+# 3-Extract OLD and NEW full signature path and split path
+# Determine OLD_FULL_SIG
+if [[ -f "${RENAME_FILE}" ]]; then
+    FIRST_LINE=$(head -n1 "${RENAME_FILE}")
+    OLD_FULL_SIG="${FIRST_LINE#Unbekannt_}"
+    log_info "Old signature determined from rename.txt: ${OLD_FULL_SIG}"
+else
+    OLD_FULL_SIG="${meta_unitIDCUSTOM}"
+    log_info "Old signature determined from metadata: ${OLD_FULL_SIG}"
+fi
 
+# Determine NEW_FULL_SIG
+if [[ -n "${ARCINSYS_ID}" && "${ARCINSYS_ID}" =~ ^v[0-9]+$ ]]; then
+    NEW_FULL_SIG="${full_sig_path}"
+else
+    NEW_FULL_SIG="${kitodo_processtitle#Rename_}"
+fi
 
+# Validation
+if [[ -z "${OLD_FULL_SIG}" ]]; then
+    log_error "OLD_FULL_SIG empty. Aborting"
+    exit 1
+fi
 
-log_info "Old full signature: ${OLD_FULL_SIG}"
-log_info "New full signature: ${NEW_FULL_SIG}"
+# validation: rename.txt vs metadata
+if [[ ! -n "${ARCINSYS_ID}" || ! "${ARCINSYS_ID}" =~ ^v[0-9]+$ ]]; then
+    if [[ -f "${RENAME_FILE}" ]]; then
+        if [[ "${OLD_FULL_SIG}" != "${meta_unitIDCUSTOM}" ]]; then
+            log_error "rename.txt and metadata signature mismatch!"
+            exit 1
+        fi
+    fi
+fi
 
+# if nothing changed
 if [[ "${OLD_FULL_SIG}" == "${NEW_FULL_SIG}" ]]; then
-    log_info "No signature name change detected. Nothing to do."
+    log_info "No signature name change detected."
+    if [[ -f "${RENAME_FILE}" ]]; then
+        rm -f "${RENAME_FILE}"
+        log_info "rename.txt removed. Because no rename needed"
+    fi
     exit 0
 fi
 
-OLD_SIG="${OLD_FULL_SIG##*/}"
-NEW_SIG="${NEW_FULL_SIG##*/}"
+# Split paths
+OLD_HAUS=$(echo "${OLD_FULL_SIG}" | cut -d'/' -f1)
+OLD_BESTAND=$(echo "${OLD_FULL_SIG}" | cut -d'/' -f2)
+OLD_SIG=$(echo "${OLD_FULL_SIG}" | cut -d'/' -f3)
 
-log_info "Old leaf signature: ${OLD_SIG}"
-log_info "New leaf signature: ${NEW_SIG}"
+NEW_HAUS=$(echo "${NEW_FULL_SIG}" | cut -d'/' -f1)
+NEW_BESTAND=$(echo "${NEW_FULL_SIG}" | cut -d'/' -f2)
+NEW_SIG=$(echo "${NEW_FULL_SIG}" | cut -d'/' -f3)
 
-# 3-Locate current folder via delivery md5
+# 3-Locate current, target folder and md5
 md5_file="${base_path_hdd_ingest_ceph}/${hdd_root_folder}/${meta_delivery}.md5"
 
 if [[ ! -f "${md5_file}" ]]; then
@@ -68,25 +103,42 @@ fi
 
 # Use real detected folder from search_folder_vze()
 CURRENT_FOLDER="${folder_path}"
-
-# Determine parent directory dynamically (secure / fremdarchivalien safe)
 PARENT_DIR="$(dirname "${CURRENT_FOLDER}")"
-TARGET_FOLDER="${PARENT_DIR}/${NEW_SIG}"
 
 if [[ ! -d "${CURRENT_FOLDER}" ]]; then
     log_error "Current folder not found: ${CURRENT_FOLDER}"
     exit 3
 fi
 
-if [[ -e "${TARGET_FOLDER}" ]]; then
-    log_error "Target folder already exists: ${TARGET_FOLDER}"
-    exit 4
+# Determine parent directory dynamically (secure / fremdarchivalien safe)
+BASE_PREFIX="${CURRENT_FOLDER%/${OLD_HAUS}/${OLD_BESTAND}/${OLD_SIG}}"
+
+if [[ -z "${BASE_PREFIX}" ]]; then
+    log_error "Failed to determine ingest base path."
+    exit 1
 fi
 
+TARGET_HAUS_DIR="${BASE_PREFIX}/${NEW_HAUS}"
+TARGET_BESTAND_DIR="${TARGET_HAUS_DIR}/${NEW_BESTAND}"
+
+log_info "Ensuring target directory structure exists..."
+
+mkdir -p "${TARGET_BESTAND_DIR}"
+
+TARGET_FOLDER="${TARGET_BESTAND_DIR}/${NEW_SIG}"
+
 # 4-Rename folder
-log_info "Renaming folder..."
-mv "${CURRENT_FOLDER}" "${TARGET_FOLDER}"
-log_info "Folder renamed."
+if [[ "${CURRENT_FOLDER}" != "${TARGET_FOLDER}" ]]; then
+    log_info "Moving folder:"
+    log_info "FROM: ${CURRENT_FOLDER}"
+    log_info "TO:   ${TARGET_FOLDER}"
+	if [[ -e "${TARGET_FOLDER}" ]]; then
+		log_error "Target folder already exists: ${TARGET_FOLDER}"
+		exit 4
+	fi
+    mv "${CURRENT_FOLDER}" "${TARGET_FOLDER}"
+    CURRENT_FOLDER="${TARGET_FOLDER}"
+fi
 
 # 5-Rename contained files (_OLD_ → _NEW_)
 log_info "Renaming contained files..."
@@ -95,16 +147,17 @@ find "${TARGET_FOLDER}" -type f | while read -r FILE; do
     BASENAME="$(basename "$FILE")"
     DIRNAME="$(dirname "$FILE")"
 
-    if [[ "${BASENAME}" == *"_${OLD_SIG}_"* ]]; then
-        NEW_NAME="${BASENAME//_${OLD_SIG}_/_${NEW_SIG}_}"
+	OLD_PATTERN="${OLD_HAUS}_${OLD_BESTAND}_nr_${OLD_SIG}"
+    NEW_PATTERN="${NEW_HAUS}_${NEW_BESTAND}_nr_${NEW_SIG}"
+    
+	if [[ "${BASENAME}" == *"${OLD_PATTERN}"* ]]; then
+        NEW_NAME="${BASENAME//$OLD_PATTERN/$NEW_PATTERN}"
         mv "${FILE}" "${DIRNAME}/${NEW_NAME}"
         log_info "Renamed file: ${BASENAME} → ${NEW_NAME}"
     fi
 done
 
-# 6-Rename derivate images (_OLD_ → _NEW_)
-log_info "Renaming derivative images (max/thumbs/tiff)..."
-
+# 6-Rename derivate images
 final_kitodo_image_path="${kitodo_metadata_path}/${kitodo_processid}/images"
 
 for SUBDIR in "max" "thumbs" "tiff"; do
@@ -121,21 +174,19 @@ for SUBDIR in "max" "thumbs" "tiff"; do
     find "${IMG_PATH}" -type f | while read -r FILE; do
         BASENAME="$(basename "$FILE")"
         DIRNAME="$(dirname "$FILE")"
-
-        if [[ "${BASENAME}" == *"_${OLD_SIG}_"* ]]; then
-            NEW_NAME="${BASENAME//_${OLD_SIG}_/_${NEW_SIG}_}"
-
-            # collision protection
+        OLD_PATTERN="${OLD_HAUS}_${OLD_BESTAND}_nr_${OLD_SIG}"
+		NEW_PATTERN="${NEW_HAUS}_${NEW_BESTAND}_nr_${NEW_SIG}"
+        if [[ "${BASENAME}" == *"${OLD_PATTERN}"* ]]; then
+			NEW_NAME="${BASENAME//$OLD_PATTERN/$NEW_PATTERN}"
+			# collision protection
             if [[ -e "${DIRNAME}/${NEW_NAME}" ]]; then
                 log_warn "Target image file already exists, skipping: ${NEW_NAME}"
                 continue
             fi
-
-            mv "${FILE}" "${DIRNAME}/${NEW_NAME}"
-            log_info "Renamed image: ${BASENAME} → ${NEW_NAME}"
-        fi
+			mv "${FILE}" "${DIRNAME}/${NEW_NAME}"
+			log_info "Renamed derivate file: ${BASENAME} → ${NEW_NAME}"
+		fi
     done
-
 done
 
 # 7-Update MD5 file (locked)
@@ -145,40 +196,38 @@ log_info "Updating MD5 file..."
     flock --exclusive --timeout 300 200 || exit 1
 
     sed -i \
-        -e "s|/${OLD_SIG}/|/${NEW_SIG}/|g" \
-        -e "s|_${OLD_SIG}_|_${NEW_SIG}_|g" \
-        "${md5_file}"
+	-e "s|${OLD_HAUS}/${OLD_BESTAND}/${OLD_SIG}|${NEW_HAUS}/${NEW_BESTAND}/${NEW_SIG}|g" \
+	-e "s|${OLD_HAUS}_${OLD_BESTAND}|${NEW_HAUS}_${NEW_BESTAND}|g" \
+	-e "s|_${OLD_SIG}_|_${NEW_SIG}_|g" \
+	"${md5_file}"
 
 ) 200>"${md5_file}.lock"
 
 log_info "MD5 file updated."
 
 # 8-Update meta.xml (remove Unbekannt_ prefix)
-
-
 if [[ -n "${ARCINSYS_ID}" && "${ARCINSYS_ID}" =~ ^v[0-9]+$ ]]; then
-    log_info "arcinsysid detected (${ARCINSYS_ID}). Special handling branch."
-
-    if [[ "${meta_document_type}" == "Unknown" ]]; then
-        log_info "Updating title for Unknown process (arcinsys mode)..."
-
-        # update metadata 
-		# update metadata for Unknown process
-        # Example of how to modify the title based on arcinsysid
-        # Additional logic here, if necessary
-    fi
-
+        log_warn "Metadata likely already updated via Arcinsys ID."
+		log_warn "Schutzfrist may be checked manually."
 else
     log_info "No arcinsysid found. Using default metadata update."
-
 	# Update unitIDCUSTOM and document_type
     xmlstarlet ed -L \
 		-N kitodo="http://meta.kitodo.org/v1/" \
 		-u "//kitodo:metadata[@name='unitIDCUSTOM']/text()" -v "${NEW_FULL_SIG}" \
 		"${META_FILE}"
 fi
-
 log_info "meta.xml update completed."
 
+# 9- Write rename summary
+log_info "Writing rename summary..."
+
+{
+echo "Rename executed"
+echo "OLD_FULL_SIG: ${OLD_FULL_SIG}"
+echo "NEW_FULL_SIG: ${NEW_FULL_SIG}"
+} > "${RENAME_FILE}"
+
+#10- exit
 log_info "Rename workflow completed successfully."
 exit 0
