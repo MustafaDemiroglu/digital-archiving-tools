@@ -56,7 +56,7 @@ case "${HAUS}" in
         ;;
 esac
 
-MAIL_FROM="Mustafa.Demiroglu@hla.hessen.de"
+MAIL_FROM="hla-repo@uni-marburg.de"
 
 # 3- Read rename information
 FIRST_LINE=$(sed -n '1p' "${RENAME_FILE}")
