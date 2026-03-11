@@ -96,6 +96,15 @@ Vielen Dank für Ihre Unterstützung.
 
 Viele Grüße
 HlaDigiTeam
+
+Achtung:
+Dies ist eine automatisch generierte E-Mail. Bitte verwenden Sie diese E-Mail-Adresse nicht für Antworten.
+Bei Fragen zu dieser E-Mail wenden Sie sich bitte an das HlaDigiTeam.
+Mustafa.Demiroglu@hla.hessen.de
+Sam.Krasser@hla.hessen.de
+Nils.Reichert@hla.hessen.de
+Andrea.Langner@hla.hessen.de
+Corinna.Berg@hla.hessen.de
 EOF
 )
 
