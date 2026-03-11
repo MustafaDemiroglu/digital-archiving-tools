@@ -17,35 +17,15 @@ log_warn()  { echo "[WARN]  $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
 log_error() { echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
 
 # 1- Check if this workflow step is relevant 
-log_info "Checking process status..."
+TARGET_DIR="${kitodo_metadata_path}/${kitodo_processid}"
+RENAME_FILE="${TARGET_DIR}/rename.txt"
 
-# only handle unknown or multimatch
-if [[ -n "${meta_document_type}" ]]; then
-	# if document type exists use metadata
-    if [[ "${vze_unknown}" != "true" && "${vze_multi}" != "true" ]]; then
-        log_info "Process is not Unknown or Multimatch (document_type based). Nothing to do."
-        exit 0
-    fi
-else
-	# fallback if document type missing
-    if [[ ! "${kitodo_processtitle}" =~ ^Unbekannt_ && ! "${kitodo_processtitle}" =~ ^Multimatch_ ]]; then
-        log_info "Process is not Unknown or Multimatch (processtitel based). Nothing to do."
-        exit 0
-    fi
-fi
-
-# Fremdarchivalien detection
-is_fremdarchivalien="false"
-
-if [[ "${folder_path}" == *"/fremdarchivalien/"* ]]; then
-    is_fremdarchivalien="true"
-fi
-
-# ignore fremdarchivalien
-if [[ "${is_fremdarchivalien}" == "true" ]]; then
-    log_info "Fremdarchivalien detected. Nothing to do."
+if [[ ! -f "${RENAME_FILE}" ]]; then
+    log_info "No rename.txt found. Process was not renamed. Nothing to do."
     exit 0
 fi
+
+log_info "rename.txt detected. Processing rename notification."
 
 # 2-Determine archive house
 
@@ -78,91 +58,39 @@ esac
 
 MAIL_FROM="Mustafa.Demiroglu@hla.hessen.de"
 
-# 3- Build mail subject
+# 3- Read rename information
+FIRST_LINE=$(sed -n '1p' "${RENAME_FILE}")
+OLD_SIG=$(sed -n '3p' "${RENAME_FILE}" | sed 's/^OLD_FULL_SIG: //')
+NEW_SIG=$(sed -n '4p' "${RENAME_FILE}" | sed 's/^NEW_FULL_SIG: //')
 
-if [[ "${vze_multi}" == "true" ]]; then
-    MATCH_TYPE="Multimatch"
-else
-    MATCH_TYPE="Unbekannt"
-fi
+# 4- Build mail subject
+SUBJECT="Projekt SiFi: Umbenennung - ${FIRST_LINE} in Lieferung ${meta_delivery} wurde erfolgreich durchgeführt."
 
-SUBJECT="Projekt SiFi: Nacharbeitung erforderlich – ${kitodo_processtitle} in Lieferung ${meta_delivery}"
-
-# 4. Build mail body
+# 5. Build mail body
 MAIL_BODY=$(cat <<EOF
 Liebe Kolleginnen und Kollegen,
 
-im Rahmen des Projektes SiFi wurde in der Lieferung ${meta_delivery} ein Vorgang festgestellt,
-bei dem eine Nacharbeitung erforderlich ist.
+im Rahmen des Projektes SiFi wurde nach einer Korrekturanfrage
+folgende Umbenennung durchgeführt.
 
 Betroffener Vorgang:
-${kitodo_processtitle}
+Alte Kitodo Processtitle: ${FIRST_LINE}
+Neue Kitodo Processtitle: ${kitodo_processtitle}
 
-Der Workflow kann aktuell nicht automatisch fortgesetzt werden.
+Alte Signatur:
+${OLD_SIG}
 
-Bitte prüfen Sie den Vorgang im Kitodo-Webanwendung und nehmen Sie die notwendigen Korrekturen vor.
+Neue Signatur:
+${NEW_SIG}
 
-EOF
-)
+Die Änderung wurde entsprechend der im Workflow angegebenen
+Korrektur durchgeführt.
 
-if [[ "${MATCH_TYPE}" == "Unbekannt" ]]; then
+Falls Sie der Meinung sind, dass diese Änderung nicht korrekt ist
+oder ein Fehler vorliegt, geben Sie uns bitte kurz Bescheid.
 
-MAIL_BODY+=$(cat <<EOF
-
-Problem:
-Die gelieferte Signatur stimmt nicht mit den Daten in Arcinsys überein.
-
-Mögliche Lösungen:
-
-- Vergleich der Signatur zwischen Arcinsys und Digitalisaten
-- Umbenennung in Arcinsys oder bei den Digitalisaten
-- ggf. Ergänzung einer neuen Signatur in Arcinsys
-- Aktualisierung der Metadaten mit der korrekten Arcinsys-ID
-
-Falls eine Aktualisierung der Metadaten nicht möglich ist,
-muss aber der Prozess-Titel trotzdem entsprechend angepasst werden.
-Entfernen Sie bitte den Begriff "Unbekannt_" aus dem Prozess-Titel
-und setzen Sie die Schutzfrist korrekt um den Veröffettlichung_Fehler
-zu vermeiden.
-
-Wenn eine Umbenennung der Digitalisate erforderlich ist,
-bitte dies im Prozess-Titel vermerken (entfernen Sie bitte den Begriff 
-"Unbekannt" aus dem Prozess-Titel und setzen Sie "Rename") und nach Möglichkeit
-die Schutzfrist korrekt setzen.
-
-EOF
-)
-
-else
-
-MAIL_BODY+=$(cat <<EOF
-
-Problem:
-In Arcinsys existieren mehrere Signaturen mit identischem Namen.
-
-Damit der Workflow korrekt fortgesetzt werden kann,
-muss eindeutig festgelegt werden, mit welcher Arcinsys-ID
-die Metadaten verknüpft werden sollen.
-
-Bitte aktualisieren Sie die Metadaten mit der korrekten Arcinsys-ID.
-
-Falls eine Metadatenaktualisierung nicht möglich ist, trotzdem
-entfernen Sie bitte den Begriff "Multimatch_" aus dem Prozess-Titel
-und setzen Sie die Schutzfrist korrekt.
-
-EOF
-)
-
-fi
-
-MAIL_BODY+=$(cat <<EOF
-
-
-Bei Fragen oder falls Unterstützung benötigt wird,
-können Sie sich jederzeit an uns wenden.
-
-Nach der gespeicherte Korrektur können Sie den Workflow in Kitodo
-zweimal hochsetzen oder uns kurz informieren.
+Wenn die Änderung korrekt ist, können Sie diese E-Mail
+einfach ignorieren.
 
 Vielen Dank für Ihre Unterstützung.
 
@@ -171,28 +99,20 @@ HlaDigiTeam
 EOF
 )
 
-# 5. Send mail
+# 6. Send mail
 
-log_info "Sending notification mail to ${MAIL_TO}"
+log_info "Sending rename notification mail to ${MAIL_TO}"
 
 echo "${MAIL_BODY}" | mail \
     -s "${SUBJECT}" \
     -a "FROM: ${MAIL_FROM}" \
     "${MAIL_TO}"
 
-# 6. Create rename.txt for Unknown processes
+# 7. Delete rename.txt
+log_info "Removing rename.txt"
 
-if [[ "${MATCH_TYPE}" == "Unbekannt" ]]; then
+rm -f "${RENAME_FILE}"
 
-    TARGET_DIR="${kitodo_metadata_path}/${kitodo_processid}"
-    RENAME_FILE="${TARGET_DIR}/rename.txt"
-
-    log_info "Creating rename.txt for follow-up workflow"
-
-    echo "${kitodo_processtitle}" > "${RENAME_FILE}"
-
-fi
-
-log_info "Notification finished successfully."
+log_info "Notification after rename action finished successfully."
 
 exit 0

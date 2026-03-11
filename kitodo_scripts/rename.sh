@@ -16,22 +16,33 @@ log_info()  { echo "[INFO]  $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
 log_warn()  { echo "[WARN]  $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
 log_error() { echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
 
-# 1-Only run for renamed processtitle as Umbenennen_
-if [[ ! "${kitodo_processtitle}" =~ ^Umbenennen_ ]]; then
-    log_info "Process title does not start with 'Umbenennen_'. Nothing to do."
+TARGET_DIR="${kitodo_metadata_path}/${kitodo_processid}"
+RENAME_FILE="${TARGET_DIR}/rename.txt"
+
+# 1-Only run for renamed processtitle as Rename_
+if [[ ! "${kitodo_processtitle}" =~ ^Rename_ ]]; then
+    log_info "Process title does not start with 'Rename_'. Nothing to do."
     exit 0
 fi
 
 log_info "Processing Unbekannt workflow: ${kitodo_processtitle}"
 
-# 2-Extract OLD and NEW full signature path
-OLD_FULL_SIG="${meta_unitIDCUSTOM}"
-NEW_FULL_SIG="${kitodo_processtitle#Umbenennen_}"
+# 2- Read metadata to find ArcinsysID
+META_FILE="${kitodo_metadata_path}/${kitodo_processid}/meta.xml"
 
-if [[ -z "${OLD_FULL_SIG}" ]]; then
-    log_error "meta_unitIDCUSTOM is empty. Aborting."
-    exit 1
+if [[ ! -f "${META_FILE}" ]]; then
+    log_error "meta.xml not found: ${META_FILE}"
+    exit 5
 fi
+
+# read arcinsysid
+ARCINSYS_ID=$(xmlstarlet sel -N kitodo="http://meta.kitodo.org/v1/" -t -v \
+"//kitodo:metadata[@name='ArcinsysID']" \
+"${META_FILE}" 2>/dev/null || true)
+
+# 3-Extract OLD and NEW full signature path
+
+
 
 log_info "Old full signature: ${OLD_FULL_SIG}"
 log_info "New full signature: ${NEW_FULL_SIG}"
@@ -142,18 +153,8 @@ log_info "Updating MD5 file..."
 
 log_info "MD5 file updated."
 
-# 7-Update meta.xml (remove Unbekannt_ prefix)
-META_FILE="${kitodo_metadata_path}/${kitodo_processid}/meta.xml"
+# 8-Update meta.xml (remove Unbekannt_ prefix)
 
-if [[ ! -f "${META_FILE}" ]]; then
-    log_error "meta.xml not found: ${META_FILE}"
-    exit 5
-fi
-
-# read arcinsysid
-ARCINSYS_ID=$(xmlstarlet sel -N kitodo="http://meta.kitodo.org/v1/" -t -v \
-"//kitodo:metadata[@name='ArcinsysID']" \
-"${META_FILE}" 2>/dev/null || true)
 
 if [[ -n "${ARCINSYS_ID}" && "${ARCINSYS_ID}" =~ ^v[0-9]+$ ]]; then
     log_info "arcinsysid detected (${ARCINSYS_ID}). Special handling branch."

@@ -193,6 +193,6 @@ if [[ "${MATCH_TYPE}" == "Unbekannt" ]]; then
 
 fi
 
-log_info "Notification finished successfully."
+log_info "Notification before rename action finished successfully."
 
 exit 0
