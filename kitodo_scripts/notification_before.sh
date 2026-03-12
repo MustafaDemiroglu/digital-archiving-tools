@@ -3,6 +3,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+MAIL_SCRIPT="${SCRIPT_DIR}/mailjob.py"
+
 # Source Kitodo library
 if ! source "$(dirname "${0}")"/lib_hla_kitodo.sh; then
     echo "Failed to include library file! please check."
@@ -36,7 +39,6 @@ fi
 
 # Fremdarchivalien detection
 is_fremdarchivalien="false"
-
 if [[ "${folder_path}" == *"/fremdarchivalien/"* ]]; then
     is_fremdarchivalien="true"
 fi
@@ -47,39 +49,11 @@ if [[ "${is_fremdarchivalien}" == "true" ]]; then
     exit 0
 fi
 
-# 2-Determine archive house
-
+# 2-Determine archive house for mail
 HAUS=$(echo "${full_sig_path}" | cut -d'/' -f1)
-
 log_info "Detected archive house: ${HAUS}"
 
-case "${HAUS}" in
-    hstam)
-		MAIL_TO="Mustafa.Demiroglu@hla.hessen.de"
-        #MAIL_TO="Sabine.Fees@hla.hessen.de"
-        ;;
-    hstad)
-		MAIL_TO="Mustafa.Demiroglu@hla.hessen.de"
-        #MAIL_TO="Lars.Zimmermann@hla.hessen.de"
-        ;;
-    hhstaw)
-		MAIL_TO="Mustafa.Demiroglu@hla.hessen.de"
-        #MAIL_TO="Anke.Stoesser@hla.hessen.de"
-        ;;
-    adjb)
-		MAIL_TO="Mustafa.Demiroglu@hla.hessen.de"
-        #MAIL_TO="Mario.Aschoff@hla.hessen.de"
-        ;;
-    *)
-        log_warn "Unknown archive house: ${HAUS}"
-        exit 0
-        ;;
-esac
-
-MAIL_FROM="hla-repo@uni-marburg.de"
-
 # 3- Build mail subject
-
 if [[ "${vze_multi}" == "true" ]]; then
     MATCH_TYPE="Multimatch"
 else
@@ -181,23 +155,20 @@ EOF
 )
 
 # 5. Send mail
+log_info "Sending notification via python mailjob.py"
+python3 "${MAIL_SCRIPT}" \
+    --haus "${HAUS}" \
+    --subject "${SUBJECT}" \
+    --body "${MAIL_BODY}"
 
-log_info "Sending notification mail to ${MAIL_TO}"
-echo -e "Subject: ${SUBJECT}\nFrom: ${MAIL_FROM}\n\n${MAIL_BODY}" | sendmail "${MAIL_TO}"
 
 # 6. Create rename.txt for Unknown processes
-
 if [[ "${MATCH_TYPE}" == "Unbekannt" ]]; then
-
     TARGET_DIR="${kitodo_metadata_path}/${kitodo_processid}"
     RENAME_FILE="${TARGET_DIR}/rename.txt"
-
     log_info "Creating rename.txt for follow-up workflow"
-
     echo "${kitodo_processtitle}" > "${RENAME_FILE}"
-
 fi
 
 log_info "Notification before rename action finished successfully."
-
 exit 0

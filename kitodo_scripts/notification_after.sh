@@ -3,6 +3,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+MAIL_SCRIPT="${SCRIPT_DIR}/mailjob.py"
+
 # Source Kitodo library
 if ! source "$(dirname "${0}")"/lib_hla_kitodo.sh; then
     echo "Failed to include library file! please check."
@@ -28,35 +31,8 @@ fi
 log_info "rename.txt detected. Processing rename notification."
 
 # 2-Determine archive house
-
 HAUS=$(echo "${full_sig_path}" | cut -d'/' -f1)
-
 log_info "Detected archive house: ${HAUS}"
-
-case "${HAUS}" in
-    hstam)
-		MAIL_TO="Mustafa.Demiroglu@hla.hessen.de"
-        #MAIL_TO="Sabine.Fees@hla.hessen.de"
-        ;;
-    hstad)
-		MAIL_TO="Mustafa.Demiroglu@hla.hessen.de"
-        #MAIL_TO="Lars.Zimmermann@hla.hessen.de"
-        ;;
-    hhstaw)
-		MAIL_TO="Mustafa.Demiroglu@hla.hessen.de"
-        #MAIL_TO="Anke.Stoesser@hla.hessen.de"
-        ;;
-    adjb)
-		MAIL_TO="Mustafa.Demiroglu@hla.hessen.de"
-        #MAIL_TO="Mario.Aschoff@hla.hessen.de"
-        ;;
-    *)
-        log_warn "Unknown archive house: ${HAUS}"
-        exit 0
-        ;;
-esac
-
-MAIL_FROM="hla-repo@uni-marburg.de"
 
 # 3- Read rename information
 FIRST_LINE=$(sed -n '1p' "${RENAME_FILE}")
@@ -109,16 +85,16 @@ EOF
 )
 
 # 6. Send mail
-
-log_info "Sending rename notification mail to ${MAIL_TO}"
-
-echo "${MAIL_BODY}" | mail -s "${SUBJECT}" -r "${MAIL_FROM}" "${MAIL_TO}"
+log_info "Sending rename notification mail via pyhton mailjob.py"
+python3 "${MAIL_SCRIPT}" \
+    --haus "${HAUS}" \
+    --subject "${SUBJECT}" \
+    --body "${MAIL_BODY}"
 
 # 7. Delete rename.txt
 log_info "Removing rename.txt"
-
 rm -f "${RENAME_FILE}"
 
+# 8- Exit
 log_info "Notification after rename action finished successfully."
-
 exit 0
