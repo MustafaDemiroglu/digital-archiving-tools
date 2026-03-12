@@ -77,13 +77,6 @@ case "${HAUS}" in
 esac
 
 MAIL_FROM="hla-repo@uni-marburg.de"
-#Debug:
-
-echo "Hallo Mustafa" | mail -s "Test an Mustafa _ 1" Mustafa.Demiroglu@hla.hessen.de
-echo "Hallo Mustafa" | mail -s "Test an Mustafa _ 2" -r "hla-repo@uni-marburg.de" Mustafa.Demiroglu@hla.hessen.de
-log_info "TEst erfolg"
-
-
 
 # 3- Build mail subject
 
@@ -191,9 +184,6 @@ EOF
 
 log_info "Sending notification mail to ${MAIL_TO}"
 echo -e "Subject: ${SUBJECT}\nFrom: ${MAIL_FROM}\n\n${MAIL_BODY}" | sendmail "${MAIL_TO}"
-#echo "${MAIL_BODY}" | mail -s "${SUBJECT}" "${MAIL_TO}"
-
-
 
 # 6. Create rename.txt for Unknown processes
 

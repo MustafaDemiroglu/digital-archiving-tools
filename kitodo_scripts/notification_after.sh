@@ -56,7 +56,7 @@ case "${HAUS}" in
         ;;
 esac
 
-#MAIL_FROM="hla-repo@uni-marburg.de"
+MAIL_FROM="hla-repo@uni-marburg.de"
 
 # 3- Read rename information
 FIRST_LINE=$(sed -n '1p' "${RENAME_FILE}")
@@ -112,7 +112,7 @@ EOF
 
 log_info "Sending rename notification mail to ${MAIL_TO}"
 
-echo "${MAIL_BODY}" | mail -s "${SUBJECT}" "${MAIL_TO}"
+echo "${MAIL_BODY}" | mail -s "${SUBJECT}" -r "${MAIL_FROM}" "${MAIL_TO}"
 
 # 7. Delete rename.txt
 log_info "Removing rename.txt"
