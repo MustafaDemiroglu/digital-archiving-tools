@@ -21,7 +21,11 @@ RENAME_FILE="${TARGET_DIR}/rename.txt"
 
 # 1-Only run for renamed processtitle as Rename_
 if [[ ! "${kitodo_processtitle}" =~ ^Rename_ ]]; then
-    log_info "Process title does not start with 'Rename_'. Nothing to do."
+    log_info "Process title does not start with 'Rename_'. Nothing to do. Just delete rename.txt"
+	if [[ -f "${RENAME_FILE}" ]]; then
+        rm -f "${RENAME_FILE}"
+        log_info "rename.txt removed. Because no rename needed"
+    fi
     exit 0
 fi
 
