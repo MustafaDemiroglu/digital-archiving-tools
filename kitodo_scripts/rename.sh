@@ -44,6 +44,11 @@ ARCINSYS_ID=$(xmlstarlet sel -N kitodo="http://meta.kitodo.org/v1/" -t -v \
 "//kitodo:metadata[@name='ArcinsysID']" \
 "${META_FILE}" 2>/dev/null || true)
 
+if [[ ! -f "${RENAME_FILE}" ]] && [[ -n "${ARCINSYS_ID:-}" && "${ARCINSYS_ID}" =~ ^v[0-9]+$ ]]; then
+    log_info "No rename.txt present and Arcinsys ID already assigned. Rename step skipped."
+    exit 0
+fi
+
 # 3-Extract OLD and NEW full signature path and split path
 # Determine OLD_FULL_SIG
 if [[ -f "${RENAME_FILE}" ]]; then
@@ -51,15 +56,17 @@ if [[ -f "${RENAME_FILE}" ]]; then
     OLD_FULL_SIG="${FIRST_LINE#Unbekannt_}"
     log_info "Old signature determined from rename.txt: ${OLD_FULL_SIG}"
 else
-    OLD_FULL_SIG="${meta_unitIDCUSTOM}"
+    OLD_FULL_SIG="${full_sig_path}"
     log_info "Old signature determined from metadata: ${OLD_FULL_SIG}"
 fi
 
 # Determine NEW_FULL_SIG
 if [[ -n "${ARCINSYS_ID}" && "${ARCINSYS_ID}" =~ ^v[0-9]+$ ]]; then
     NEW_FULL_SIG="${full_sig_path}"
+	log_info "New signature determined from metadata (Arcinsys ID present): ${NEW_FULL_SIG}"
 else
     NEW_FULL_SIG="${kitodo_processtitle#Rename_}"
+	log_info "New signature determined from processtitle: ${NEW_FULL_SIG}"
 fi
 
 # Validation
@@ -68,14 +75,9 @@ if [[ -z "${OLD_FULL_SIG}" ]]; then
     exit 1
 fi
 
-# validation: rename.txt vs metadata
-if [[ ! -n "${ARCINSYS_ID}" || ! "${ARCINSYS_ID}" =~ ^v[0-9]+$ ]]; then
-    if [[ -f "${RENAME_FILE}" ]]; then
-        if [[ "${OLD_FULL_SIG}" != "${meta_unitIDCUSTOM}" ]]; then
-            log_error "rename.txt and metadata signature mismatch!"
-            exit 1
-        fi
-    fi
+if [[ -z "${NEW_FULL_SIG}" ]]; then
+    log_error "NEW_FULL_SIG empty. Aborting"
+    exit 1
 fi
 
 # if nothing changed
@@ -97,7 +99,7 @@ NEW_HAUS=$(echo "${NEW_FULL_SIG}" | cut -d'/' -f1)
 NEW_BESTAND=$(echo "${NEW_FULL_SIG}" | cut -d'/' -f2)
 NEW_SIG=$(echo "${NEW_FULL_SIG}" | cut -d'/' -f3)
 
-# 3-Locate current, target folder and md5
+# 3-Locate curren and target folder
 md5_file="${base_path_hdd_ingest_ceph}/${hdd_root_folder}/${meta_delivery}.md5"
 
 if [[ ! -f "${md5_file}" ]]; then
