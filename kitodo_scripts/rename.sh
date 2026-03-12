@@ -54,6 +54,7 @@ fi
 if [[ -f "${RENAME_FILE}" ]]; then
     FIRST_LINE=$(head -n1 "${RENAME_FILE}")
     OLD_FULL_SIG="${FIRST_LINE#Unbekannt_}"
+	OLD_FULL_SIG="${FIRST_LINE#Rename_}"
     log_info "Old signature determined from rename.txt: ${OLD_FULL_SIG}"
 else
     OLD_FULL_SIG="${full_sig_path}"
@@ -99,16 +100,15 @@ NEW_HAUS=$(echo "${NEW_FULL_SIG}" | cut -d'/' -f1)
 NEW_BESTAND=$(echo "${NEW_FULL_SIG}" | cut -d'/' -f2)
 NEW_SIG=$(echo "${NEW_FULL_SIG}" | cut -d'/' -f3)
 
-# 3-Locate curren and target folder
-md5_file="${base_path_hdd_ingest_ceph}/${hdd_root_folder}/${meta_delivery}.md5"
-
+# 3-Locate current and target folder
 if [[ ! -f "${md5_file}" ]]; then
     log_error "MD5 file not found: ${md5_file}"
     exit 2
 fi
 
 # Use real detected folder from search_folder_vze()
-CURRENT_FOLDER="${folder_path}"
+folder_path_refind=$(find "${full_hdd_folder_path}" -path "*/${OLD_FULL_SIG}")
+CURRENT_FOLDER="${folder_path_refind}"
 PARENT_DIR="$(dirname "${CURRENT_FOLDER}")"
 
 if [[ ! -d "${CURRENT_FOLDER}" ]]; then
