@@ -53,8 +53,8 @@ fi
 # Determine OLD_FULL_SIG
 if [[ -f "${RENAME_FILE}" ]]; then
     FIRST_LINE=$(head -n1 "${RENAME_FILE}")
-    OLD_FULL_SIG="${FIRST_LINE#Unbekannt_}"
-	OLD_FULL_SIG="${FIRST_LINE#Rename_}"
+	OLD_FULL_SIG="${FIRST_LINE#Unbekannt_}"
+	OLD_FULL_SIG="${OLD_FULL_SIG#Rename_}"
     log_info "Old signature determined from rename.txt: ${OLD_FULL_SIG}"
 else
     OLD_FULL_SIG="${full_sig_path}"
@@ -100,6 +100,11 @@ NEW_HAUS=$(echo "${NEW_FULL_SIG}" | cut -d'/' -f1)
 NEW_BESTAND=$(echo "${NEW_FULL_SIG}" | cut -d'/' -f2)
 NEW_SIG=$(echo "${NEW_FULL_SIG}" | cut -d'/' -f3)
 
+OLD_PREFIX="${OLD_HAUS}/${OLD_BESTAND}/${OLD_SIG}"
+NEW_PREFIX="${NEW_HAUS}/${NEW_BESTAND}/${NEW_SIG}"
+OLD_FILE_PREFIX="${OLD_HAUS}_${OLD_BESTAND}_nr_${OLD_SIG}_"
+NEW_FILE_PREFIX="${NEW_HAUS}_${NEW_BESTAND}_nr_${NEW_SIG}_"
+
 # 3-Locate current and target folder
 if [[ ! -f "${md5_file}" ]]; then
     log_error "MD5 file not found: ${md5_file}"
@@ -108,6 +113,7 @@ fi
 
 # Use real detected folder from search_folder_vze()
 folder_path_refind=$(find "${full_hdd_folder_path}" -path "*/${OLD_FULL_SIG}")
+
 CURRENT_FOLDER="${folder_path_refind}"
 PARENT_DIR="$(dirname "${CURRENT_FOLDER}")"
 
@@ -148,16 +154,11 @@ fi
 
 # 5-Rename contained files (_OLD_ → _NEW_)
 log_info "Renaming contained files..."
-
 find "${TARGET_FOLDER}" -type f | while read -r FILE; do
     BASENAME="$(basename "$FILE")"
     DIRNAME="$(dirname "$FILE")"
-
-	OLD_PATTERN="${OLD_HAUS}_${OLD_BESTAND}_nr_${OLD_SIG}"
-    NEW_PATTERN="${NEW_HAUS}_${NEW_BESTAND}_nr_${NEW_SIG}"
-    
-	if [[ "${BASENAME}" == *"${OLD_PATTERN}"* ]]; then
-        NEW_NAME="${BASENAME//$OLD_PATTERN/$NEW_PATTERN}"
+	if [[ "${BASENAME}" == *"${OLD_FILE_PREFIX}"* ]]; then
+        NEW_NAME="${BASENAME//$OLD_FILE_PREFIX/$NEW_FILE_PREFIX}"
         mv "${FILE}" "${DIRNAME}/${NEW_NAME}"
         log_info "Renamed file: ${BASENAME} → ${NEW_NAME}"
     fi
@@ -165,25 +166,18 @@ done
 
 # 6-Rename derivate images
 final_kitodo_image_path="${kitodo_metadata_path}/${kitodo_processid}/images"
-
 for SUBDIR in "max" "thumbs" "tiff"; do
-
     IMG_PATH="${final_kitodo_image_path}/${SUBDIR}"
-
     if [[ ! -d "${IMG_PATH}" ]]; then
         log_warn "Image folder not found, skipping: ${IMG_PATH}"
         continue
     fi
-
     log_info "Processing image folder: ${IMG_PATH}"
-
     find "${IMG_PATH}" -type f | while read -r FILE; do
         BASENAME="$(basename "$FILE")"
         DIRNAME="$(dirname "$FILE")"
-        OLD_PATTERN="${OLD_HAUS}_${OLD_BESTAND}_nr_${OLD_SIG}"
-		NEW_PATTERN="${NEW_HAUS}_${NEW_BESTAND}_nr_${NEW_SIG}"
-        if [[ "${BASENAME}" == *"${OLD_PATTERN}"* ]]; then
-			NEW_NAME="${BASENAME//$OLD_PATTERN/$NEW_PATTERN}"
+        if [[ "${BASENAME}" == *"${OLD_FILE_PREFIX}"* ]]; then
+			NEW_NAME="${BASENAME//$OLD_FILE_PREFIX/$NEW_FILE_PREFIX}"
 			# collision protection
             if [[ -e "${DIRNAME}/${NEW_NAME}" ]]; then
                 log_warn "Target image file already exists, skipping: ${NEW_NAME}"
@@ -197,18 +191,13 @@ done
 
 # 7-Update MD5 file (locked)
 log_info "Updating MD5 file..."
-
 (
     flock --exclusive --timeout 300 200 || exit 1
-
     sed -i \
-	-e "s|${OLD_HAUS}/${OLD_BESTAND}/${OLD_SIG}|${NEW_HAUS}/${NEW_BESTAND}/${NEW_SIG}|g" \
-	-e "s|${OLD_HAUS}_${OLD_BESTAND}|${NEW_HAUS}_${NEW_BESTAND}|g" \
-	-e "s|_${OLD_SIG}_|_${NEW_SIG}_|g" \
-	"${md5_file}"
+        -e "s|${OLD_PREFIX}/${OLD_FILE_PREFIX}|${NEW_PREFIX}/${NEW_FILE_PREFIX}|g" \
+        "${md5_file}"
 
 ) 200>"${md5_file}.lock"
-
 log_info "MD5 file updated."
 
 # 8-Update meta.xml (remove Unbekannt_ prefix)
