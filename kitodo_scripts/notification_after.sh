@@ -50,13 +50,12 @@ im Rahmen des Projektes SiFi wurde nach einer Korrekturanfrage
 folgende Umbenennung durchgeführt.
 
 Betroffener Vorgang:
-Alte Kitodo Processtitle: ${FIRST_LINE}
 Neue Kitodo Processtitle: ${kitodo_processtitle}
 
-Alte Signatur:
+Alte Signatur_Pfad:
 ${OLD_SIG}
 
-Neue Signatur:
+Neue Signatur_Pfad:
 ${NEW_SIG}
 
 Die Änderung wurde entsprechend der im Workflow angegebenen

@@ -13,19 +13,24 @@ MAIL_FROM = "hla-repo@uni-marburg.de"
 
 # CC recipients
 CC_RECIPIENTS = [
-    "Mustafa.Demiroglu@hla.hessen.de",
+#    "Mustafa.Demiroglu@hla.hessen.de",
 #    "Sam.Krasser@hla.hessen.de",
-    "Nils.Reichert@hla.hessen.de",
+#    "Nils.Reichert@hla.hessen.de",
 #    "Corinna.Berg@hla.hessen.de",
-    "Andrea.Langner@hla.hessen.de"
+#    "Andrea.Langner@hla.hessen.de"
+    "Mustafa.Demiroglu@hla.hessen.de"
 ]
 
 # HAUS → Mail Mapping
 HAUS_MAIL_MAP = {
-    "hstam": "Sabine.Fees@hla.hessen.de",
-    "hstad": "Lars.Zimmermann@hla.hessen.de",
-    "hhstaw": "Anke.Stoesser@hla.hessen.de",
-    "adjb": "Mario.Aschoff@hla.hessen.de"
+#    "hstam": "Sabine.Fees@hla.hessen.de",
+#    "hstad": "Lars.Zimmermann@hla.hessen.de",
+#    "hhstaw": "Anke.Stoesser@hla.hessen.de",
+#    "adjb": "Mario.Aschoff@hla.hessen.de"
+    "hstam": "Mustafa.Demiroglu@hla.hessen.de",
+    "hstad": "Mustafa.Demiroglu@hla.hessen.de",
+    "hhstaw": "Mustafa.Demiroglu@hla.hessen.de",
+    "adjb": "Mustafa.Demiroglu@hla.hessen.de"
 }
 
 # Resolve mail recipient based on HAUS
