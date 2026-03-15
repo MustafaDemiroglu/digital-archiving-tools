@@ -35,9 +35,11 @@ HAUS=$(echo "${full_sig_path}" | cut -d'/' -f1)
 log_info "Detected archive house: ${HAUS}"
 
 # 3- Read rename information
-FIRST_LINE=$(sed -n '1p' "${RENAME_FILE}")
-OLD_SIG=$(sed -n '3p' "${RENAME_FILE}" | sed 's/^OLD_FULL_SIG: //')
-NEW_SIG=$(sed -n '4p' "${RENAME_FILE}" | sed 's/^NEW_FULL_SIG: //')
+OLD_TITLE=$(grep "^OLD_PROCESS_TITLE:" "${RENAME_FILE}" | sed 's/^OLD_PROCESS_TITLE: //')
+NEW_TITLE=$(grep "^NEW_PROCESS_TITLE:" "${RENAME_FILE}" | sed 's/^NEW_PROCESS_TITLE: //')
+OLD_PATH=$(grep "^OLD_FULL_SIG:" "${RENAME_FILE}" | sed 's/^OLD_FULL_SIG: //')
+NEW_PATH=$(grep "^NEW_FULL_SIG:" "${RENAME_FILE}" | sed 's/^NEW_FULL_SIG: //')
+
 
 # 4- Build mail subject
 SUBJECT="Projekt SiFi: Umbenennung - ${FIRST_LINE} in Lieferung ${meta_delivery} wurde erfolgreich durchgeführt."
@@ -50,22 +52,21 @@ im Rahmen des Projektes SiFi wurde nach einer Korrekturanfrage
 folgende Umbenennung durchgeführt.
 
 Betroffener Vorgang:
-Neue Kitodo Processtitle: ${kitodo_processtitle}
 
-Alte Signatur_Pfad:
-${OLD_SIG}
+Alter Kitodo Processtitle: ${OLD_TITLE}
 
-Neue Signatur_Pfad:
-${NEW_SIG}
+Neuer Kitodo Processtitle: ${NEW_TITLE}
 
-Die Änderung wurde entsprechend der im Workflow angegebenen
-Korrektur durchgeführt.
+Alter Signaturpfad: ${OLD_PATH}
+
+Neuer Signaturpfad: ${NEW_PATH}
+
+Die Änderung wurde entsprechend der im Workflow angegebenen Korrektur durchgeführt.
 
 Falls Sie der Meinung sind, dass diese Änderung nicht korrekt ist
 oder ein Fehler vorliegt, geben Sie uns bitte kurz Bescheid.
 
-Wenn die Änderung korrekt ist, können Sie diese E-Mail
-einfach ignorieren.
+Wenn die Änderung korrekt ist, können Sie diese E-Mail einfach ignorieren.
 
 Vielen Dank für Ihre Unterstützung.
 

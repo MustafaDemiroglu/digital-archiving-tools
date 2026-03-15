@@ -18,6 +18,7 @@ log_error() { echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
 
 TARGET_DIR="${kitodo_metadata_path}/${kitodo_processid}"
 RENAME_FILE="${TARGET_DIR}/rename.txt"
+FIRST_LINE=""
 
 # 1-Only run for renamed processtitle as Rename_
 if [[ ! "${kitodo_processtitle}" =~ ^Rename_ ]]; then
@@ -216,9 +217,9 @@ log_info "meta.xml update completed."
 
 # 9- Write rename summary
 log_info "Writing rename summary..."
-
 {
-echo "Rename executed"
+echo "OLD_PROCESS_TITLE: ${FIRST_LINE}"
+echo "NEW_PROCESS_TITLE: ${kitodo_processtitle}"
 echo "OLD_FULL_SIG: ${OLD_FULL_SIG}"
 echo "NEW_FULL_SIG: ${NEW_FULL_SIG}"
 } > "${RENAME_FILE}"
