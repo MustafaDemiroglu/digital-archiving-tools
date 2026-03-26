@@ -249,8 +249,8 @@ process_symlinks() {
         # Skip empty lines
         [[ -z "$arch" || -z "$new_sig" ]] && continue
 
-        local target="${DIGISERVER_KARTEN}/${new_sig}"
-        local linkdir="${DIGISERVER_ARCH}/${arch}"
+        local target="${HSTAM_KARTEN}/${new_sig}"
+        local linkdir="${HSTAM_ARCH}/${arch}"
 
         # Check if target directory exists
         if [[ ! -d "$target" ]]; then
