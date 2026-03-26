@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: hstam_architekturzeichnungen_restructure.sh
-# Version: 5.2.0
-# Author: Mustafa Demiroglu
-# Organisation: HlaDigiTeam
+# Script Name	: hstam_architekturzeichnungen_restructure.sh
+# Version		: 6.1.1
+# Author		: Mustafa Demiroglu
+# Organisation	: HlaDigiTeam
+# Date			: 26.03.2026
+# Licence		: MIT
 #
 # VERY IMPORTANT:
 #   This script MUST be run on the kitodo VM. If you need to run it on a different VM,
 #   you MUST update the root paths in the PATH CONFIG section below.
-#   Please run recreate_symlinks.sh on digiserver VM to recreate symlinks.
 #
 # Purpose:
 #   This script reorganizes HStAM architectural drawings and map collections (mostly in Karten) 
@@ -273,6 +274,86 @@ file_matches_reference() {
     expected="$(normalize_reference_pattern "$folder")"
 
     [[ "$(basename "$file")" == *"$expected"* ]]
+}
+
+###############################################################################
+# RELATIVE SYMLINK HELPER
+###############################################################################
+# make_relative_symlink <link_path> <absolute_target>
+#
+# Creates a symlink at <link_path> pointing to <absolute_target> using a
+# relative path.  This makes the symlink VM-independent: it resolves correctly
+# regardless of the absolute mount prefix of the hstam share.
+#
+# Example:
+#   link  : .../architekturzeichnungen/A123/file.tif
+#   target: .../karten/K456/file.tif
+#   stored: ../../karten/K456/file.tif  (relative from link's directory)
+###############################################################################
+
+make_relative_symlink() {
+    local link_path="$1"
+    local abs_target="$2"
+
+    local link_dir
+    link_dir="$(dirname "$link_path")"
+
+    # Compute the relative path from link_dir to abs_target
+    local rel_target
+    rel_target="$(realpath --relative-to="$link_dir" "$abs_target" 2>/dev/null)"
+
+    # Fallback: manual relative path calculation if realpath is unavailable
+    if [[ -z "$rel_target" ]]; then
+        rel_target="$(_manual_relative_path "$link_dir" "$abs_target")"
+    fi
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        log INFO "[DRY-RUN] would create relative symlink: $link_path -> $rel_target  (abs: $abs_target)"
+        if [[ "$VERBOSE" -eq 1 ]]; then
+            echo "[DRY-RUN] would create relative symlink: $link_path -> $rel_target"
+        fi
+        return 0
+    else
+        if ln -s "$rel_target" "$link_path" 2>/dev/null; then
+            log INFO "Created relative symlink: $link_path -> $rel_target"
+            if [[ "$VERBOSE" -eq 1 ]]; then
+                echo "Created relative symlink: $link_path -> $rel_target"
+            fi
+            return 0
+        else
+            log ERROR "Failed to create symlink: $link_path -> $rel_target"
+            return 1
+        fi
+    fi
+}
+
+# Pure-bash fallback for computing a relative path (no external tools needed).
+_manual_relative_path() {
+    local from="$1"
+    local to="$2"
+
+    from="${from%/}"
+    to="${to%/}"
+
+    IFS='/' read -ra from_parts <<< "$from"
+    IFS='/' read -ra to_parts   <<< "$to"
+
+    local common=0
+    local max=${#from_parts[@]}
+    [[ ${#to_parts[@]} -lt $max ]] && max=${#to_parts[@]}
+    for (( i=0; i<max; i++ )); do
+        [[ "${from_parts[$i]}" == "${to_parts[$i]}" ]] || break
+        common=$((i + 1))
+    done
+
+    local rel=""
+    local up=$(( ${#from_parts[@]} - common ))
+    for (( i=0; i<up; i++ )); do rel="${rel}../"; done
+    for (( i=common; i<${#to_parts[@]}; i++ )); do
+        rel="${rel}${to_parts[$i]}/"
+    done
+
+    echo "${rel%/}"
 }
 
 ###############################################################################
@@ -744,10 +825,6 @@ process_cleanup_dirs() {
 # PROCESS 7: RECREATE SYMLINKS
 ###############################################################################
 
-# NOTE: This process has been skipped because symlinks must be created on the
-#       digiserver VM where the online shares are served from. 
-#       Please run recreate_symlinks.sh on digiserver VM to recreate symlinks.
-
 process_symlinks() {
     progress "Process 7: Recreate symlinks"
 
@@ -758,80 +835,59 @@ process_symlinks() {
 
         local target="${NETAPP_KARTEN}/${n}"
         local linkdir="${NETAPP_ARCH}/${a}"
+		
+		if [[ ! -d "$target" ]]; then
+            log ERROR "Target directory does not exist: $target"
+            progress "ERROR: Target not found: $target"
+            continue
+        fi
 
+        if [[ ! -d "$linkdir" ]]; then
+            log ERROR "Link directory does not exist: $linkdir"
+            progress "ERROR: Linkdir not found: $linkdir"
+            continue
+        fi
+		
         # Remove old symlinks
         for old_link in "$linkdir"/* "$linkdir"/thumbs/*; do
+            [[ ! -e "$old_link" && ! -L "$old_link" ]] && continue
             if [[ -L "$old_link" ]]; then
-                if exec_cmd rm -f "$old_link" 2>/dev/null; then
+                if [[ "$DRY_RUN" -eq 1 ]]; then
+                    log INFO "[DRY-RUN] would remove: $old_link"
+                    [[ "$VERBOSE" -eq 1 ]] && echo "[DRY-RUN] would remove: $old_link"
                     count_removed=$((count_removed + 1))
-                    log INFO "Removed old symlink: $old_link"
-                    if [[ "$VERBOSE" -eq 1 ]]; then
-                        echo "Removed old symlink: $old_link"
+                else
+                    if rm -f "$old_link" 2>/dev/null; then
+                        count_removed=$((count_removed + 1))
+                        log INFO "Removed old symlink: $old_link"
+                        [[ "$VERBOSE" -eq 1 ]] && echo "Removed old symlink: $old_link"
                     fi
                 fi
             fi
         done
 
-        # Create new symlinks for main files
+        # Create new RELATIVE symlinks for main files
         for f in "$target"/*; do
             [[ ! -f "$f" ]] && continue
-            local link_target="${NETAPP_KARTEN}/${n}/$(basename "$f")"
+            local abs_target="${NETAPP_KARTEN}/${n}/$(basename "$f")"
             local link_name="$linkdir/$(basename "$f")"
-            
-            if [[ "$DRY_RUN" -eq 1 ]]; then
-                log INFO "[DRY-RUN] would create symlink: $link_name -> $link_target"
-                if [[ "$VERBOSE" -eq 1 ]]; then
-                    echo "[DRY-RUN] would create symlink: $link_name -> $link_target"
-                fi
-                count_links=$((count_links + 1))
-            else
-                if ln -s "$link_target" "$link_name" 2>/dev/null; then
-                    count_links=$((count_links + 1))
-                    log INFO "Created symlink: $link_name -> $link_target"
-                    if [[ "$VERBOSE" -eq 1 ]]; then
-                        echo "Created symlink: $link_name -> $link_target"
-                    fi
-                else
-                    log ERROR "Failed to create symlink: $link_name -> $link_target"
-                fi
-            fi
+            make_relative_symlink "$link_name" "$abs_target" && count_links=$((count_links + 1))
         done
 
-        # Create new symlinks for thumbnails
-        for f in "$target/thumbs"/*; do
-            [[ ! -f "$f" ]] && continue
-            local link_target="${NETAPP_KARTEN}/${n}/thumbs/$(basename "$f")"
-            local link_name="$linkdir/thumbs/$(basename "$f")"
-            
-            if [[ "$DRY_RUN" -eq 1 ]]; then
-                log INFO "[DRY-RUN] would create symlink: $link_name -> $link_target"
-                if [[ "$VERBOSE" -eq 1 ]]; then
-                    echo "[DRY-RUN] would create symlink: $link_name -> $link_target"
-                fi
-                count_links=$((count_links + 1))
-            else
-                if ln -s "$link_target" "$link_name" 2>/dev/null; then
-                    count_links=$((count_links + 1))
-                    log INFO "Created symlink: $link_name -> $link_target"
-                    if [[ "$VERBOSE" -eq 1 ]]; then
-                        echo "Created symlink: $link_name -> $link_target"
-                    fi
-                else
-                    log ERROR "Failed to create symlink: $link_name -> $link_target"
-                fi
-            fi
-        done
+        # Create new RELATIVE symlinks for thumbnails
+        if [[ -d "$target/thumbs" ]]; then
+            for f in "$target/thumbs"/*; do
+                [[ ! -f "$f" ]] && continue
+                local abs_target="${NETAPP_KARTEN}/${n}/thumbs/$(basename "$f")"
+                local link_name="$linkdir/thumbs/$(basename "$f")"
+                make_relative_symlink "$link_name" "$abs_target" && count_links=$((count_links + 1))
+            done
+        fi
 
     done < "$CSV_PROCESS"
 
     progress "Symlink recreation finished: $count_removed removed, $count_links created"
     log SUCCESS "Symlink recreation: $count_removed removed, $count_links created"
-}
-
-process_symlinks_temp() {
-    progress "Process 7: Recreate symlinks"
-    progress "This process has been skipped because symlinks must be created on the digiserver VM where"
-	progress "the online shares are served from. Please run recreate_symlinks.sh on digiserver VM to recreate symlinks."
 }
 
 ###############################################################################
@@ -907,7 +963,7 @@ main() {
     process_move_cepheus
     process_move_netapp
     process_cleanup_dirs
-    process_symlinks_temp
+    process_symlinks
     process_clean_renamed_csv
 	process_checksum
 
