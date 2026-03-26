@@ -1,18 +1,28 @@
 #!/usr/bin/env bash
 ###############################################################################
-# Script Name: recreate_symlinks.sh
-# Version: 1.1.4
-# Author: Mustafa Demiroglu
-# Organisation: HlaDigiTeam
+# Script Name	: recreate_symlinks.sh
+# Version		: 2.1.1
+# Author		: Mustafa Demiroglu
+# Organisation	: HlaDigiTeam
+# Date			: 26.03.2026
+# Licnce		: MIT
 #
-# VERY IMPORTANT:
-#   This script MUST be run on the digiserver VM because all online shares are
-#   served from this machine. If you need to run it on a different VM, you MUST
-#   update the root paths in the PATH CONFIG section below.
+# IMPORTANT:
+#   This script uses RELATIVE symlinks and is therefore VM-independent.
+#   It can be run on any VM (kitodo, digiserver, etc.) without path changes.
+#   Relative symlinks work regardless of the absolute mount prefix.
 #
 # Purpose:
 #   This script recreates symlinks HStAM architectural drawings and map collections (mostly in Karten) 
 #   while maintaining symlinks for the architekturzeichnungen.
+#
+# Why relative symlinks?
+#   kitodo VM : /media/archive/public/www/hstam/...
+#   digiserver: /archive/www/hstam/...
+#   Absolute symlinks break when mount prefix differs between VMs.
+#   Relative symlinks (e.g. ../../karten/Y/file.tif) are prefix-independent
+#   and resolve correctly on every VM as long as the internal directory
+#   structure under the hstam root remains the same.
 #
 # How it works:
 #   1. Reads a CSV file with architekturzeichnung and new signature names  
@@ -66,12 +76,31 @@ done
 [[ ! -f "$CSV_INPUT" ]] && { echo "CSV not found: $CSV_INPUT"; exit 1; }
 
 ###############################################################################
-# PATH CONFIG
+# PATH CONFIG  (VM-independent auto-detection)
 ###############################################################################
 
-DIGISERVER_ROOT="/archive/www/hstam"
-DIGISERVER_ARCH="${DIGISERVER_ROOT}/architekturzeichnungen"
-DIGISERVER_KARTEN="${DIGISERVER_ROOT}/karten"
+# Auto-detect hstam root by checking both known mount points.
+# Add further candidate paths here if new VMs are introduced.
+HSTAM_ROOT=""
+for candidate in \
+    "/media/archive/public/www/hstam" \
+    "/archive/www/hstam"; do
+    if [[ -d "$candidate" ]]; then
+        HSTAM_ROOT="$candidate"
+        break
+    fi
+done
+
+if [[ -z "$HSTAM_ROOT" ]]; then
+    echo "ERROR: Cannot locate hstam root directory."
+    echo "  Tried: /media/archive/public/www/hstam"
+    echo "         /archive/www/hstam"
+    echo "  Add the correct path to the candidate list in the PATH CONFIG section."
+    exit 1
+fi
+
+HSTAM_ARCH="${HSTAM_ROOT}/architekturzeichnungen"
+HSTAM_KARTEN="${HSTAM_ROOT}/karten"
 
 WORKDIR="/tmp/recreate_symlinks_$(date '+%Y%m%d_%H%M%S')_$$"
 LOGFILE="${WORKDIR}/process.log"
@@ -101,6 +130,91 @@ exec_cmd() {
         "$@"
         return $?
     fi
+}
+
+###############################################################################
+# RELATIVE SYMLINK HELPER
+###############################################################################
+# make_relative_symlink <link_path> <absolute_target>
+#
+# Creates a symlink at <link_path> pointing to <absolute_target> using a
+# relative path.  This makes the symlink VM-independent: it resolves correctly
+# regardless of the absolute mount prefix of the hstam share.
+#
+# Example:
+#   link  : /media/archive/public/www/hstam/architekturzeichnungen/A123/file.tif
+#   target: /media/archive/public/www/hstam/karten/K456/file.tif
+#   stored: ../../karten/K456/file.tif   (relative from link directory)
+###############################################################################
+
+make_relative_symlink() {
+    local link_path="$1"
+    local abs_target="$2"
+
+    local link_dir
+    link_dir="$(dirname "$link_path")"
+
+    # Compute the relative path from link_dir to abs_target
+    local rel_target
+    rel_target="$(realpath --relative-to="$link_dir" "$abs_target" 2>/dev/null)"
+
+    # Fallback: manual relative path calculation if realpath is unavailable
+    if [[ -z "$rel_target" ]]; then
+        rel_target="$(_manual_relative_path "$link_dir" "$abs_target")"
+    fi
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        log INFO "[DRY-RUN] Would create relative symlink: $link_path -> $rel_target  (abs: $abs_target)"
+        if [[ "$VERBOSE" -eq 1 ]]; then
+            echo "[DRY-RUN] Would create relative symlink: $link_path -> $rel_target"
+        fi
+        return 0
+    else
+        if ln -s "$rel_target" "$link_path" 2>/dev/null; then
+            log INFO "Created relative symlink: $link_path -> $rel_target"
+            if [[ "$VERBOSE" -eq 1 ]]; then
+                echo "Created relative symlink: $link_path -> $rel_target"
+            fi
+            return 0
+        else
+            log ERROR "Failed to create symlink: $link_path -> $rel_target"
+            return 1
+        fi
+    fi
+}
+
+# Pure-bash fallback for computing a relative path (no external tools needed).
+_manual_relative_path() {
+    local from="$1"  # directory containing the symlink
+    local to="$2"    # absolute target path
+
+    # Normalise (remove trailing slashes)
+    from="${from%/}"
+    to="${to%/}"
+
+    # Split into components
+    IFS='/' read -ra from_parts <<< "$from"
+    IFS='/' read -ra to_parts   <<< "$to"
+
+    # Find common prefix length
+    local common=0
+    local max=${#from_parts[@]}
+    [[ ${#to_parts[@]} -lt $max ]] && max=${#to_parts[@]}
+    for (( i=0; i<max; i++ )); do
+        [[ "${from_parts[$i]}" == "${to_parts[$i]}" ]] || break
+        common=$((i + 1))
+    done
+
+    # Build relative path: go up from 'from' to common ancestor, then down to 'to'
+    local rel=""
+    local up=$(( ${#from_parts[@]} - common ))
+    for (( i=0; i<up; i++ )); do rel="${rel}../"; done
+    for (( i=common; i<${#to_parts[@]}; i++ )); do
+        rel="${rel}${to_parts[$i]}/"
+    done
+
+    # Remove trailing slash
+    echo "${rel%/}"
 }
 
 ###############################################################################
@@ -158,28 +272,22 @@ process_symlinks() {
         fi
 
         # Remove old symlinks in main directory
-        if [[ -d "$linkdir" ]]; then
-            for old_link in "$linkdir"/*; do
-                [[ ! -e "$old_link" && ! -L "$old_link" ]] && continue
-                if [[ -L "$old_link" ]]; then
-                    if [[ "$DRY_RUN" -eq 1 ]]; then
-                        log INFO "[DRY-RUN] Would remove: $old_link"
-                        if [[ "$VERBOSE" -eq 1 ]]; then
-                            echo "[DRY-RUN] Would remove: $old_link"
-                        fi
+        for old_link in "$linkdir"/*; do
+            [[ ! -e "$old_link" && ! -L "$old_link" ]] && continue
+            if [[ -L "$old_link" ]]; then
+                if [[ "$DRY_RUN" -eq 1 ]]; then
+                    log INFO "[DRY-RUN] Would remove: $old_link"
+                    [[ "$VERBOSE" -eq 1 ]] && echo "[DRY-RUN] Would remove: $old_link"
+                    count_removed=$((count_removed + 1))
+                else
+                    if rm -f "$old_link" 2>/dev/null; then
                         count_removed=$((count_removed + 1))
-                    else
-                        if rm -f "$old_link" 2>/dev/null; then
-                            count_removed=$((count_removed + 1))
-                            log INFO "Removed old symlink: $old_link"
-                            if [[ "$VERBOSE" -eq 1 ]]; then
-                                echo "Removed old symlink: $old_link"
-                            fi
-                        fi
+                        log INFO "Removed old symlink: $old_link"
+                        [[ "$VERBOSE" -eq 1 ]] && echo "Removed old symlink: $old_link"
                     fi
                 fi
-            done
-        fi
+            fi
+        done
 
         # Remove old symlinks in thumbs directory
         if [[ -d "$linkdir/thumbs" ]]; then
@@ -188,71 +296,39 @@ process_symlinks() {
                 if [[ -L "$old_link" ]]; then
                     if [[ "$DRY_RUN" -eq 1 ]]; then
                         log INFO "[DRY-RUN] Would remove: $old_link"
-                        if [[ "$VERBOSE" -eq 1 ]]; then
-                            echo "[DRY-RUN] Would remove: $old_link"
-                        fi
+                        [[ "$VERBOSE" -eq 1 ]] && echo "[DRY-RUN] Would remove: $old_link"
                         count_removed=$((count_removed + 1))
                     else
                         if rm -f "$old_link" 2>/dev/null; then
                             count_removed=$((count_removed + 1))
                             log INFO "Removed old symlink: $old_link"
-                            if [[ "$VERBOSE" -eq 1 ]]; then
-                                echo "Removed old symlink: $old_link"
-                            fi
+                            [[ "$VERBOSE" -eq 1 ]] && echo "Removed old symlink: $old_link"
                         fi
                     fi
                 fi
             done
         fi
 
-        # Create new symlinks for main files
+        # Create new RELATIVE symlinks for main files
         for f in "$target"/*; do
             [[ ! -f "$f" ]] && continue
-            local link_target="${DIGISERVER_KARTEN}/${new_sig}/$(basename "$f")"
+            local abs_target="${HSTAM_KARTEN}/${new_sig}/$(basename "$f")"
             local link_name="$linkdir/$(basename "$f")"
             
-            if [[ "$DRY_RUN" -eq 1 ]]; then
-                log INFO "[DRY-RUN] Would create symlink: $link_name -> $link_target"
-                if [[ "$VERBOSE" -eq 1 ]]; then
-                    echo "[DRY-RUN] Would create symlink: $link_name -> $link_target"
-                fi
+            if make_relative_symlink "$link_name" "$abs_target"; then
                 count_links=$((count_links + 1))
-            else
-                if ln -s "$link_target" "$link_name" 2>/dev/null; then
-                    count_links=$((count_links + 1))
-                    log INFO "Created symlink: $link_name -> $link_target"
-                    if [[ "$VERBOSE" -eq 1 ]]; then
-                        echo "Created symlink: $link_name -> $link_target"
-                    fi
-                else
-                    log ERROR "Failed to create symlink: $link_name -> $link_target"
-                fi
             fi
         done
 
-        # Create new symlinks for thumbnails
+        # Create new RELATIVE symlinks for thumbnails
         if [[ -d "$target/thumbs" ]]; then
             for f in "$target/thumbs"/*; do
                 [[ ! -f "$f" ]] && continue
-                local link_target="${DIGISERVER_KARTEN}/${new_sig}/thumbs/$(basename "$f")"
+                local abs_target="${HSTAM_KARTEN}/${new_sig}/thumbs/$(basename "$f")"
                 local link_name="$linkdir/thumbs/$(basename "$f")"
                 
-                if [[ "$DRY_RUN" -eq 1 ]]; then
-                    log INFO "[DRY-RUN] Would create symlink: $link_name -> $link_target"
-                    if [[ "$VERBOSE" -eq 1 ]]; then
-                        echo "[DRY-RUN] Would create symlink: $link_name -> $link_target"
-                    fi
+                if make_relative_symlink "$link_name" "$abs_target"; then
                     count_links=$((count_links + 1))
-                else
-                    if ln -s "$link_target" "$link_name" 2>/dev/null; then
-                        count_links=$((count_links + 1))
-                        log INFO "Created symlink: $link_name -> $link_target"
-                        if [[ "$VERBOSE" -eq 1 ]]; then
-                            echo "Created symlink: $link_name -> $link_target"
-                        fi
-                    else
-                        log ERROR "Failed to create symlink: $link_name -> $link_target"
-                    fi
                 fi
             done
         fi
