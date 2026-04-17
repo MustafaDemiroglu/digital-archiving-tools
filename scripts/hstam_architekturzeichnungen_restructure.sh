@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name	: hstam_architekturzeichnungen_restructure.sh
-# Version		: 6.1.1
+# Version		: 6.2.2
 # Author		: Mustafa Demiroglu
 # Organisation	: HlaDigiTeam
-# Date			: 26.03.2026
+# Date			: 17.04.2026
 # Licence		: MIT
 #
 # VERY IMPORTANT:
@@ -46,8 +46,9 @@
 #   7. Logs renamed and suspicious file operations into dedicated CSV files
 #   8. Removes empty old directories after successful migration under Cepheus
 #   9. Recreates symlinks from architekturzeichnungen to point to new locations (check note)
-#   10. Updates checksums (placeholder for future implementation)
-#   11. Cleans up the renamed_signaturen.csv file paths by removing path prefix
+#	10. Creates a new md5 file for next Process
+#   11. Updates checksums (placeholder for future implementation)
+#   12. Cleans up the renamed_signaturen.csv file paths by removing path prefix
 #
 # Output & Logging:
 #   - renamed_signaturen.csv: successfully moved files
@@ -891,7 +892,51 @@ process_symlinks() {
 }
 
 ###############################################################################
-# PROCESS 8: CLEAN UP RENAMED CSV
+# PROCESS 8: GENERATE MD5 FILE
+###############################################################################
+
+process_generate_md5() {
+    progress "Process X: Generate MD5 checksums"
+
+    local count_md5=0
+
+    # MD5 file reset
+    : > "$CSV_MD5"
+
+    while IFS=';' read -r old_path new_path || [[ -n "${old_path:-}" ]]; do
+        [[ "$old_path" == "old_signatur_files" ]] && continue
+        [[ -z "$new_path" ]] && continue
+
+        if [[ -f "$new_path" ]]; then
+
+            if [[ "$DRY_RUN" -eq 1 ]]; then
+                log INFO "[DRY-RUN] would generate md5 for: $new_path"
+                [[ "$VERBOSE" -eq 1 ]] && echo "[DRY-RUN] md5: $new_path"
+            else
+                # Generate md5
+                local md5
+                md5=$(md5sum "$new_path" 2>/dev/null | awk '{print $1}')
+
+                # Remove /media/cepheus/ prefix
+                local cleaned_path="${new_path#/media/cepheus/}"
+
+                echo "${md5} ${cleaned_path}" >> "$CSV_MD5"
+
+                count_md5=$((count_md5 + 1))
+                log INFO "MD5 generated: $cleaned_path"
+            fi
+        else
+            log WARN "File not found for MD5: $new_path"
+        fi
+
+    done < "$CSV_RENAMED"
+
+    progress "MD5 generation finished: $count_md5 entries"
+    log SUCCESS "MD5 generation: $count_md5 entries"
+}
+
+###############################################################################
+# PROCESS 9: CLEAN UP RENAMED CSV
 ###############################################################################
 
 process_clean_renamed_csv() {
@@ -926,7 +971,7 @@ process_clean_renamed_csv() {
 }
 
 ###############################################################################
-# PROCESS 9: CHECKSUM (PLACEHOLDER)
+# PROCESS 10: CHECKSUM (PLACEHOLDER)
 ###############################################################################
 
 process_checksum() {
@@ -964,6 +1009,7 @@ main() {
     process_move_netapp
     process_cleanup_dirs
     process_symlinks
+	process_generate_md5
     process_clean_renamed_csv
 	process_checksum
 
@@ -974,6 +1020,21 @@ main() {
     renamed_count=$(wc -l < "$CSV_RENAMED" 2>/dev/null || echo "0")
     deleted_count=$(wc -l < "$CSV_DELETED" 2>/dev/null || echo "0")
 
+	# Move WORKDIR to CSV location
+    local target_dir
+    target_dir="$(dirname "$CSV_INPUT")"
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        progress "[DRY-RUN] would move WORKDIR to: $target_dir"
+    else
+        if mv "$WORKDIR" "$target_dir"/ 2>/dev/null; then
+            progress "WORKDIR moved to: $target_dir"
+            log INFO "WORKDIR moved to: $target_dir"
+        else
+            log ERROR "Failed to move WORKDIR to: $target_dir"
+        fi
+    fi
+	
     progress ""
     progress "========================================"
     progress "All processes finished successfully"
