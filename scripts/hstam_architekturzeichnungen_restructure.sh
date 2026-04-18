@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name	: hstam_architekturzeichnungen_restructure.sh
-# Version		: 6.2.3
+# Version		: 6.2.4
 # Author		: Mustafa Demiroglu
 # Organisation	: HlaDigiTeam
 # Date			: 17.04.2026
@@ -130,12 +130,11 @@ CSV_MANUAL="${WORKDIR}/csv_check_manuel.csv"
 CSV_RENAMED="${WORKDIR}/renamed_signaturen.csv"
 CSV_DELETED="${WORKDIR}/deleted_old_signaturen.csv"
 CSV_SUSPECT_FILES="${WORKDIR}/suspect_file_moves.csv"
-CSV_MD5="${WORKDIR}/architekturzeichnungen_$(basename "$CSV_INPUT").md5"
+CSV_MD5="${WORKDIR}/architekturzeichnungen_$(basename "${CSV_INPUT%.*}").md5"
 
 ###############################################################################
 # LOCK FILE MECHANISM & SETUP
 ###############################################################################
-
 acquire_lock() {
     if [[ -f "$LOCKFILE" ]]; then
         echo "ERROR: Another instance is running (lock file exists: $LOCKFILE)"
@@ -156,7 +155,6 @@ mkdir -p "$WORKDIR"
 ###############################################################################
 # LOGGING
 ###############################################################################
-
 log() {
     local level="$1"; shift
     echo "$(date '+%F %T') [$level] $*" >> "$LOGFILE"
@@ -177,7 +175,6 @@ verbose_log() {
 ###############################################################################
 # PRE-FLIGHT CHECKS
 ###############################################################################
-
 preflight_checks() {
     progress "Running pre-flight checks..."
 
@@ -205,7 +202,6 @@ preflight_checks() {
 ###############################################################################
 # UTILITIES
 ###############################################################################
-
 ensure_non_empty_process_csv() {
     local lines
     lines=$(wc -l < "$CSV_PROCESS" 2>/dev/null || echo 0)
@@ -292,7 +288,6 @@ file_matches_reference() {
 #   target: .../karten/K456/file.tif
 #   stored: ../../karten/K456/file.tif  (relative from link's directory)
 ###############################################################################
-
 make_relative_symlink() {
     local link_path="$1"
     local abs_target="$2"
@@ -361,7 +356,6 @@ _manual_relative_path() {
 ###############################################################################
 # PROCESS 1: CSV TRANSFORMATION
 ###############################################################################
-
 process_csv_transform() {
     progress "Process 1: CSV transformation"
 
@@ -437,7 +431,6 @@ process_csv_transform() {
 ###############################################################################
 # PROCESS 2: PATH VALIDATION
 ###############################################################################
-
 process_validate_paths() {
     progress "Process 2: Path validation"
 
@@ -483,7 +476,6 @@ process_validate_paths() {
 ###############################################################################
 # PROCESS 3: CREATE NEW DIRECTORIES
 ###############################################################################
-
 process_create_dirs() {
     progress "Process 3: Create new directories"
 
@@ -541,7 +533,6 @@ process_create_dirs() {
 ###############################################################################
 # PROCESS 4: CEPHEUS MOVE
 ###############################################################################
-
 process_move_cepheus() {
     progress "Process 4: Move files in Cepheus"
 
@@ -620,7 +611,6 @@ process_move_cepheus() {
 ###############################################################################
 # PROCESS 5: NETAPP MOVE
 ###############################################################################
-
 process_move_netapp() {
     progress "Process 5: Move files in NetApp"
 
@@ -758,7 +748,6 @@ process_move_netapp() {
 ###############################################################################
 # PROCESS 6: DELETE EMPTY OLD DIRS
 ###############################################################################
-
 process_cleanup_dirs() {
     progress "Process 6: Remove empty old directories"
 
@@ -826,7 +815,6 @@ process_cleanup_dirs() {
 ###############################################################################
 # PROCESS 7: RECREATE SYMLINKS
 ###############################################################################
-
 process_symlinks() {
     progress "Process 7: Recreate symlinks"
 
@@ -984,7 +972,6 @@ process_clean_renamed_csv() {
 ###############################################################################
 # PROCESS 10: CHECKSUM (PLACEHOLDER)
 ###############################################################################
-
 process_checksum() {
     progress "Process 9: Checksum update - to be implemented"
     log INFO "Checksum update will be implemented later"
@@ -993,7 +980,6 @@ process_checksum() {
 ###############################################################################
 # MAIN
 ###############################################################################
-
 main() {
     acquire_lock
 
