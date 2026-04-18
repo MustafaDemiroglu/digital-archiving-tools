@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name	: hstam_architekturzeichnungen_restructure.sh
-# Version		: 6.2.2
+# Version		: 6.2.3
 # Author		: Mustafa Demiroglu
 # Organisation	: HlaDigiTeam
 # Date			: 17.04.2026
@@ -130,6 +130,7 @@ CSV_MANUAL="${WORKDIR}/csv_check_manuel.csv"
 CSV_RENAMED="${WORKDIR}/renamed_signaturen.csv"
 CSV_DELETED="${WORKDIR}/deleted_old_signaturen.csv"
 CSV_SUSPECT_FILES="${WORKDIR}/suspect_file_moves.csv"
+CSV_MD5="${WORKDIR}/architekturzeichnungen_$(basename "$CSV_INPUT").md5"
 
 ###############################################################################
 # LOCK FILE MECHANISM & SETUP
@@ -894,16 +895,22 @@ process_symlinks() {
 ###############################################################################
 # PROCESS 8: GENERATE MD5 FILE
 ###############################################################################
-
 process_generate_md5() {
-    progress "Process X: Generate MD5 checksums"
+    progress "Process 8: Generate MD5 checksums"
 
     local count_md5=0
 
-    # MD5 file reset
+	# Safety: CSV_MD5 exists?
+    if [[ -z "${CSV_MD5:-}" ]]; then
+        log ERROR "CSV_MD5 is not defined!"
+        progress "ERROR: CSV_MD5 is not defined"
+        return 1
+    fi
+	
+	# MD5 file reset
     : > "$CSV_MD5"
-
-    while IFS=';' read -r old_path new_path || [[ -n "${old_path:-}" ]]; do
+	
+    while IFS=';' read -r old_path new_path; do
         [[ "$old_path" == "old_signatur_files" ]] && continue
         [[ -z "$new_path" ]] && continue
 
@@ -914,13 +921,18 @@ process_generate_md5() {
                 [[ "$VERBOSE" -eq 1 ]] && echo "[DRY-RUN] md5: $new_path"
             else
                 # Generate md5
-                local md5
-                md5=$(md5sum "$new_path" 2>/dev/null | awk '{print $1}')
+                local md5line md5
+				if md5_line=$(md5sum "$new_path" 2>/dev/null); then
+					md5="${md5_line%% *}"
+				else
+					log WARN "MD5 failed: $new_path"
+					continue
+				fi
 
                 # Remove /media/cepheus/ prefix
                 local cleaned_path="${new_path#/media/cepheus/}"
 
-                echo "${md5} ${cleaned_path}" >> "$CSV_MD5"
+                echo "${md5}  ${cleaned_path}" >> "$CSV_MD5"
 
                 count_md5=$((count_md5 + 1))
                 log INFO "MD5 generated: $cleaned_path"
@@ -938,9 +950,8 @@ process_generate_md5() {
 ###############################################################################
 # PROCESS 9: CLEAN UP RENAMED CSV
 ###############################################################################
-
 process_clean_renamed_csv() {
-    progress "Process 8: Clean up renamed CSV paths"
+    progress "Process 9: Clean up renamed CSV paths"
     
     local tmp="${CSV_RENAMED}.tmp"
     local count_cleaned=0
