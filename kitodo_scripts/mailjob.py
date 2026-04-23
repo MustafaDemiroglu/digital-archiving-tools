@@ -25,7 +25,8 @@ HAUS_MAIL_MAP = {
     "hstam": "Sabine.Fees@hla.hessen.de",
     "hstad": "Lars.Zimmermann@hla.hessen.de",
     "hhstaw": "Anke.Stoesser@hla.hessen.de",
-    "adjb": "Mario.Aschoff@hla.hessen.de"
+    "adjb": "Mario.Aschoff@hla.hessen.de",
+    "architekturzeichnung": "Eva.Bender@hla.hessen.de; Dominik.Brendel@hla.hessen.de"
 }
 
 # Resolve mail recipient based on HAUS
