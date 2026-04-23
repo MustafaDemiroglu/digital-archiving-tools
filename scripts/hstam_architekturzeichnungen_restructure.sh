@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name	: hstam_architekturzeichnungen_restructure.sh
-# Version		: 6.3.1
+# Version		: 6.3.2
 # Author		: Mustafa Demiroglu
 # Organisation	: HlaDigiTeam
 # Date			: 23.04.2026
@@ -130,7 +130,7 @@ CSV_MANUAL="${WORKDIR}/csv_check_manuel.csv"
 CSV_RENAMED="${WORKDIR}/renamed_signaturen.csv"
 CSV_DELETED="${WORKDIR}/deleted_old_signaturen.csv"
 CSV_SUSPECT_FILES="${WORKDIR}/suspect_file_moves.csv"
-CSV_MD5="${WORKDIR}/hstam_architekturzeichnungen_$(basename "${CSV_INPUT%.*}").md5"
+CSV_MD5="${WORKDIR}/$(basename "${CSV_INPUT%.*}").md5"
 
 ###############################################################################
 # LOCK FILE MECHANISM & SETUP
