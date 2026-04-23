@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name	: hstam_architekturzeichnungen_restructure.sh
-# Version		: 6.2.4
+# Version		: 6.3.1
 # Author		: Mustafa Demiroglu
 # Organisation	: HlaDigiTeam
-# Date			: 17.04.2026
+# Date			: 23.04.2026
 # Licence		: MIT
 #
 # VERY IMPORTANT:
@@ -130,7 +130,7 @@ CSV_MANUAL="${WORKDIR}/csv_check_manuel.csv"
 CSV_RENAMED="${WORKDIR}/renamed_signaturen.csv"
 CSV_DELETED="${WORKDIR}/deleted_old_signaturen.csv"
 CSV_SUSPECT_FILES="${WORKDIR}/suspect_file_moves.csv"
-CSV_MD5="${WORKDIR}/architekturzeichnungen_$(basename "${CSV_INPUT%.*}").md5"
+CSV_MD5="${WORKDIR}/hstam_architekturzeichnungen_$(basename "${CSV_INPUT%.*}").md5"
 
 ###############################################################################
 # LOCK FILE MECHANISM & SETUP
@@ -973,8 +973,39 @@ process_clean_renamed_csv() {
 # PROCESS 10: CHECKSUM (PLACEHOLDER)
 ###############################################################################
 process_checksum() {
-    progress "Process 9: Checksum update - to be implemented"
+    progress "Process 10: Checksum update - to be implemented for manual works"
     log INFO "Checksum update will be implemented later"
+	progress "Process 10: Kitodo checksum handoff"
+	log INFO "Kitodo note: If executed on Kitodo VM, checksum update will be handled automatically by Kitodo."
+
+    # Target directory
+    local target_dir
+    target_dir="$(dirname "$CSV_INPUT")"
+	
+    local target_md5="${target_dir}/$(basename "$CSV_MD5")"
+
+    # Safety check
+    if [[ ! -f "$CSV_MD5" ]]; then
+        log ERROR "Generated MD5 file not found: $CSV_MD5"
+        progress "ERROR: MD5 file missing, cannot copy"
+        return 1
+    fi
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        log INFO "[DRY-RUN] would sync MD5 to CSV directory: $CSV_MD5 -> $target_md5"
+        [[ "$VERBOSE" -eq 1 ]] && \
+            echo "[DRY-RUN] rsync $CSV_MD5 -> $target_md5"
+        return 0
+    fi
+
+    # Rsync with overwrite
+    if rsync -av "$CSV_MD5" "$target_md5" 2>/dev/null; then
+        log INFO "MD5 file synced to CSV directory: $target_md5 (Kitodo will use this file)"
+        progress "MD5 file copied to CSV location for Kitodo processing"
+    else
+        log WARN "Failed to sync MD5 file to CSV directory"
+        progress "WARNING: MD5 copy to CSV directory failed"
+    fi
 }
 
 ###############################################################################
