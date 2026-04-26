@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name	: hstam_architekturzeichnungen_restructure.sh
-# Version		: 6.3.3
+# Version		: 6.3.4
 # Author		: Mustafa Demiroglu
 # Organisation	: HlaDigiTeam
 # Date			: 26.04.2026
