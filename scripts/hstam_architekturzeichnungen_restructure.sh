@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name	: hstam_architekturzeichnungen_restructure.sh
-# Version		: 6.3.2
+# Version		: 6.3.3
 # Author		: Mustafa Demiroglu
 # Organisation	: HlaDigiTeam
-# Date			: 23.04.2026
+# Date			: 26.04.2026
 # Licence		: MIT
 #
 # VERY IMPORTANT:
@@ -151,6 +151,8 @@ release_lock() {
 trap release_lock EXIT INT TERM
 
 mkdir -p "$WORKDIR"
+# permissions for Kitodo + manual access
+chmod -R 775 "$WORKDIR"
 
 ###############################################################################
 # LOGGING
@@ -693,7 +695,7 @@ process_move_netapp() {
             done
 
             if [[ -d "$src_old/thumbs" ]]; then
-                for thumbfile in "$src_old"/thumbs/*"$n"*; do
+                for thumbfile in "$src_old"/thumbs/*; do
                     [[ ! -f "$thumbfile" ]] && continue
 					if file_matches_reference "$thumbfile" "$dst_new"; then
 						if exec_cmd mv "$thumbfile" "$dst_new/thumbs/" 2>/dev/null; then
@@ -1019,6 +1021,15 @@ main() {
     progress "========================================"
     progress "Working directory: $WORKDIR"
     log INFO "Script started - CSV Input: $CSV_INPUT"
+	# DEBUG: runtime user info (Kitodo environment check)
+    {
+        echo "================ USER DEBUG ================"
+        date
+        echo "whoami: $(whoami)"
+        echo "id: $(id)"
+        echo "pwd: $(pwd)"
+        echo "==========================================="
+    } >> "$LOGFILE" 2>&1
 
     [[ "$DRY_RUN" -eq 1 ]] && progress "DRY-RUN MODE - No filesystem changes will be made"
     [[ "$VERBOSE" -eq 1 ]] && progress "Verbose mode enabled"
@@ -1056,13 +1067,15 @@ main() {
         progress "[DRY-RUN] would move WORKDIR to: $target_dir"
     else
         if mv "$WORKDIR" "$target_dir"/ 2>/dev/null; then
+			WORKDIR="${target_dir}/$(basename "$WORKDIR")"
+			LOGFILE="${WORKDIR}/process.log"
             progress "WORKDIR moved to: $target_dir"
             log INFO "WORKDIR moved to: $target_dir"
         else
             log ERROR "Failed to move WORKDIR to: $target_dir"
         fi
     fi
-	
+		
     progress ""
     progress "========================================"
     progress "All processes finished successfully"
