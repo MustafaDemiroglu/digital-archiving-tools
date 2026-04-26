@@ -70,6 +70,7 @@
 ###############################################################################
 
 set -uo pipefail
+umask 002
 IFS=$'\n\t'
 
 ###############################################################################
@@ -151,8 +152,14 @@ release_lock() {
 trap release_lock EXIT INT TERM
 
 mkdir -p "$WORKDIR"
-# permissions for Kitodo + manual access
-chmod -R 775 "$WORKDIR"
+# Ensure shared group
+if ! chgrp -R hladigi "$WORKDIR" 2>/dev/null; then
+    log WARN "Could not change group to hladigi (not permitted?)"
+fi
+# permissions for Kitodo + manual access. Try to fix permissions, but do NOT fail if not allowed
+if ! chmod -R 775 "$WORKDIR" 2>/dev/null; then
+    log WARN "Could not change permissions for $WORKDIR (not owner?)"
+fi
 
 ###############################################################################
 # LOGGING
