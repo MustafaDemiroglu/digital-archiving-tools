@@ -14,7 +14,7 @@ final_kitodo_image_path="${kitodo_metadata_path}/${kitodo_processid}/images"
 final_path_new="/media/cepheus/derivate_on_demand/${meta_delivery}/secure/${full_sig_path}"
 
 echo "Creating folder structure: ${final_path_new}"
-sg "${group}" -c "mkdir -p ${final_path_new}/${kitodo_img_thumb_name}"
+sg "${group}" -c "mkdir -vp ${final_path_new}"
 
 echo "Copying max images to final structure"
 rsync -av --ignore-existing "${final_kitodo_image_path}/${kitodo_img_max_name}/" "${final_path_new}/"

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name	: hstam_architekturzeichnungen_restructure.sh
-# Version		: 6.3.4
+# Version		: 6.3.5
 # Author		: Mustafa Demiroglu
 # Organisation	: HlaDigiTeam
-# Date			: 26.04.2026
+# Date			: 28.04.2026
 # Licence		: MIT
 #
 # VERY IMPORTANT:
@@ -152,7 +152,8 @@ release_lock() {
 trap release_lock EXIT INT TERM
 
 mkdir -p "$WORKDIR"
-# Ensure shared group
+
+# Set group ownership to hladigi, ignore errors if not permitted
 if ! chgrp -R hladigi "$WORKDIR" 2>/dev/null; then
     log WARN "Could not change group to hladigi (not permitted?)"
 fi
