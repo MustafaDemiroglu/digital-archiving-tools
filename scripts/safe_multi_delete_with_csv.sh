@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name: safe_multi_delete_with_csv.sh
-# Version: 7.1.1
+# Version: 7.2.1
 # Author: Mustafa Demiroglu
 # Organisation: HlaDigiTeam
 #
@@ -60,7 +60,7 @@ NOTFOUND_FILE="dirs_not_found_to_delete_${NOWSTAMP}.list"
 
 # --------------------------- Helpers & Logging -------------------------------
 
-print_help() { sed -n '2,70p' "$0"; }
+print_help() { sed -n '2,45p' "$0"; }
 
 log() {  # always echo + append to log
   echo "$*" | tee -a "$LOGFILE"
@@ -272,7 +272,7 @@ delete_parallel() {
 }
 
 # ------------------------------- Arg parsing ---------------------------------
-
+POSITIONAL=()  # to store non-option arguments
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -f|--file) FILE="$2"; shift 2 ;;
@@ -280,12 +280,35 @@ while [[ $# -gt 0 ]]; do
     -p|--parallel) PARALLEL=true; shift ;;
     -v|--verbose) VERBOSE=true; shift ;;
     -h|--help) print_help; exit 0 ;;
-    *) echo "Unknown option: $1"; print_help; exit 1 ;;
+    -*) echo "Unknown option: $1"; print_help; exit 1 ;;
+	*)
+      # positional argument: treat as file if FILE not already set
+      if [[ -z "$FILE" ]]; then
+        FILE="$1"
+      else
+        POSITIONAL+=("$1")
+      fi
+      shift
+      ;;
   esac
 done
 
-# ---------------------------------- Main -------------------------------------
+# restore positional arguments (if needed later)
+set -- "${POSITIONAL[@]}"
 
+# ------------------------ Check file existence ------------------------------
+if [[ -z "$FILE" ]]; then
+  echo "Error: No file specified."
+  print_help
+  exit 1
+fi
+
+if [[ ! -f "$FILE" ]]; then
+  echo "Error: Specified file does not exist: $FILE"
+  exit 1
+fi
+
+# ---------------------------------- Main -------------------------------------
 touch "$LOGFILE" "$ERRFILE"
 choose_file_if_missing
 detect_separator
