@@ -33,7 +33,7 @@ get_md5() {
     md5sum "$f" | awk '{print $1}'
 }
 
-# append one "hash  path" line to deleted_duplikaten.md5, uses flock so can also parallel
+# append one "hash  path" line to deleted_duplikaten.md5, uses flock so can kitodo also parallel
 append_to_deleted_md5() {
     local hash="$1"
     local filepath="$2"
@@ -62,8 +62,8 @@ build_ceph_md5_map() {
     declare -g -A ceph_md5_map   # global so process_duplicate_removal can use it
 
     local candidates=(
-        "${base_path_ceph}/${hdd_sub_folder}/${full_sig_path}"
-        "${base_path_ceph}/secure/${hdd_sub_folder}/${full_sig_path}"
+        "${base_path_ceph}/${full_sig_path}"
+        "${base_path_ceph}/secure/${full_sig_path}"
     )
 
     local total=0
@@ -126,71 +126,41 @@ process_duplicate_removal() {
         else
             ((skipped_count++))
         fi
-    done < <(find "${final_hdd_path}" -type f -print0)
+    done < <(find "${folder_path}" -type f -print0)
 
-	# Remove empty directories left behind under final_hdd_path
-    find "${final_hdd_path}" -mindepth 1 -depth -type d -empty -exec rmdir -v {} \;
+	# Remove empty directories left behind under folder_path
+    find "${folder_path}" -mindepth 1 -depth -type d -empty -exec rmdir -v {} \;
     echo "Duplicate removal done: ${moved_count} deleted, ${skipped_count} unique (kept)."
 }
 
 # Main logic for processing
 if [ "${vze_accessrestrict}" == "true" ]; then
     #move all secure file to secure structure in ceph
-    final_ceph_path="${base_path_ceph}/secure/${hdd_sub_folder}/${full_sig_path}"
-    final_hdd_path="${base_path_hdd_ingest_ceph}/${hdd_root_folder}/secure/${hdd_sub_folder}/${full_sig_path}"
+    final_ceph_path="${base_path_ceph}/secure/${full_sig_path}"
 else
-    final_ceph_path="${base_path_ceph}/${hdd_sub_folder}/${full_sig_path}"
-    final_hdd_path="${base_path_hdd_ingest_ceph}/${hdd_root_folder}/${hdd_sub_folder}/${full_sig_path}"
+    final_ceph_path="${base_path_ceph}/${full_sig_path}"
 fi
 
 # Check if final destination folder exists in Ceph
 if [[ -d "${final_ceph_path}" ]]; then
     echo "Destination folder already exists! Processing MD5 comparison and file removal..."
 
-    # Get list of files in HDD and Ceph for comparison
-    final_hdd_path_filelist=$(find "${final_hdd_path}" -mindepth 1 | sort)
-    final_ceph_path_filelist=$(find "${final_ceph_path}" -mindepth 1 | sort)
-
-    # Compare file lists
-    final_hdd_path_filelist_length=$(echo "${final_hdd_path_filelist}" | wc -l)
-    final_ceph_path_filelist_length=$(echo "${final_ceph_path_filelist}" | wc -l)
-
-    if [[ "${final_hdd_path_filelist_length}" -ne "${final_ceph_path_filelist_length}" ]]; then
-        echo "Different number of files in both folders!"
-    else
-        echo "Same number of files in both folders: ${final_hdd_path_filelist_length}"
-    fi
-
-    # Compare first files in both lists
-    if grep "$(echo "${final_hdd_path_filelist}" | head -n 1)" <<< "${final_ceph_path_filelist}"; then
-        echo "First file of HDD/ingest filelist was found in Ceph filelist!"
-    else
-        echo "First file of HDD/ingest filelist was NOT found in Ceph filelist."
-    fi
-
     # MD5-based duplicate removal
 	process_duplicate_removal
 	
 else
     # Create destination directory in Ceph if it doesn't exist
-    sg "${group}" -c "mkdir -vp ${final_ceph_path}"
+	echo "Destination folder does not exists! Nothing to do"
 fi
 
-# Move remaining (non-duplicate) files to Ceph via rsync
-# moving files to ceph, recursively, without links, keep modification time, force permissions, force group, ignore existing file and delete file after successful transfer# Move the files to Ceph using rsync, excluding already existing files
-echo "Moving remaining files to Ceph..."
-if ! rsync -rtv --perms --chmod=D2770,F0660 --chown=:hladigi --ignore-existing --remove-source-files "${final_hdd_path}/" "${final_ceph_path}"; then
-    echo "Error while moving files with rsync!"
-    exit 1
-fi
-
-# Check if the source folder is empty after the transfer
-if [[ $(find "${final_hdd_path}/" -type d ! -empty | wc -l) -eq 0 ]]; then
-    echo "Source folder is empty: ${final_hdd_path}/"
-else
-    echo "Source folder is not empty, please check! Aborting."
+# Final check — folder must still exist for downstream scripts to continue
+if [[ ! -d "${folder_path}" ]]; then
+    echo "ERROR: Signature folder does not exist after duplicate removal: ${folder_path}"
+    echo "Aborting — downstream processing requires this folder."
+	echo "You can delete this ${kitodo_processid} from Kitodo."
     exit 4
 fi
 
 # Final message
 echo "End of script ${script_name}"
+exit 0

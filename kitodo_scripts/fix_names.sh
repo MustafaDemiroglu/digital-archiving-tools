@@ -137,11 +137,8 @@ check_folder_names "${folder_path}"
 
 if [[ ${folder_error_count} -gt 0 ]]; then
     echo ""
-    echo "########################################################################"
     echo "  ABORTED: ${folder_error_count} folder name(s) violate HLA Richtlinie."
     echo "  Manual correction is required before processing can continue."
-    echo "  See log: ${rename_log}"
-    echo "########################################################################"
     exit 2
 fi
 
@@ -150,12 +147,10 @@ check_and_rename_files "${folder_path}"
 
 if [[ ${rename_error_count} -gt 0 ]]; then
     echo ""
-    echo "########################################################################"
     echo "  WARNING: ${rename_error_count} file(s) could not be auto-renamed."
     echo "  Manual correction may be required."
-    echo "  See log: ${rename_log}"
-    echo "########################################################################"
     exit 3
 fi
 
 echo "End of script ${script_name}"
+exit 0

@@ -1,0 +1,100 @@
+#!/bin/bash
+# see library for needed parameters
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+MAIL_SCRIPT="${SCRIPT_DIR}/mailjob.py"
+
+# Source Kitodo library
+if ! source "$(dirname "${0}")"/lib_hla_kitodo.sh; then
+    echo "Failed to include library file! please check."
+    exit 5
+fi
+
+search_folder_vze
+
+# Logging, can be deleted if no needed
+log_info()  { echo "[INFO]  $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
+log_warn()  { echo "[WARN]  $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
+log_error() { echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
+
+# 1- Check if this workflow step is relevant 
+TARGET_DIR="${kitodo_metadata_path}/${kitodo_processid}"
+RENAME_FILE="${TARGET_DIR}/rename.txt"
+
+if [[ ! -f "${RENAME_FILE}" ]]; then
+    log_info "No rename.txt found. Process was not renamed. Nothing to do."
+    exit 0
+fi
+
+log_info "rename.txt detected. Processing rename notification."
+
+# 2-Determine archive house
+HAUS=$(echo "${full_sig_path}" | cut -d'/' -f1)
+log_info "Detected archive house: ${HAUS}"
+
+# 3- Read rename information
+OLD_TITLE=$(grep "^OLD_PROCESS_TITLE:" "${RENAME_FILE}" | sed 's/^OLD_PROCESS_TITLE: //')
+NEW_TITLE=$(grep "^NEW_PROCESS_TITLE:" "${RENAME_FILE}" | sed 's/^NEW_PROCESS_TITLE: //')
+OLD_PATH=$(grep "^OLD_FULL_SIG:" "${RENAME_FILE}" | sed 's/^OLD_FULL_SIG: //')
+NEW_PATH=$(grep "^NEW_FULL_SIG:" "${RENAME_FILE}" | sed 's/^NEW_FULL_SIG: //')
+
+
+# 4- Build mail subject
+SUBJECT="Umbenennung - ${FIRST_LINE} in Lieferung ${meta_delivery} wurde erfolgreich durchgeführt."
+
+# 5. Build mail body
+MAIL_BODY=$(cat <<EOF
+Liebe Kolleginnen und Kollegen,
+
+im Rahmen eines Repro Projektes wurde nach einer Korrekturanfrage
+folgende Umbenennung durchgeführt.
+
+Betroffener Vorgang:
+
+Alter Kitodo Processtitle: ${OLD_TITLE}
+
+Neuer Kitodo Processtitle: ${NEW_TITLE}
+
+Alter Signaturpfad: ${OLD_PATH}
+
+Neuer Signaturpfad: ${NEW_PATH}
+
+Die Änderung wurde entsprechend der im Workflow angegebenen Korrektur durchgeführt.
+
+Falls Sie der Meinung sind, dass diese Änderung nicht korrekt ist
+oder ein Fehler vorliegt, geben Sie uns bitte kurz Bescheid.
+
+Wenn die Änderung korrekt ist, können Sie diese E-Mail einfach ignorieren.
+
+Vielen Dank für Ihre Unterstützung.
+
+Viele Grüße
+HlaDigiTeam
+
+Achtung:
+Dies ist eine automatisch generierte E-Mail. Bitte verwenden Sie diese E-Mail-Adresse nicht für Antworten.
+Bei Fragen zu dieser E-Mail wenden Sie sich bitte an das HlaDigiTeam.
+Mustafa.Demiroglu@hla.hessen.de
+Sam.Krasser@hla.hessen.de
+Nils.Reichert@hla.hessen.de
+Andrea.Langner@hla.hessen.de
+Corinna.Berg@hla.hessen.de
+EOF
+)
+
+# 6. Send mail
+log_info "Sending rename notification mail via pyhton mailjob.py"
+python3 "${MAIL_SCRIPT}" \
+    --haus "${HAUS}" \
+    --subject "${SUBJECT}" \
+    --body "${MAIL_BODY}"
+
+# 7. Delete rename.txt
+log_info "Removing rename.txt"
+rm -f "${RENAME_FILE}"
+
+# 8- Exit
+log_info "Notification after rename action finished successfully."
+exit 0
