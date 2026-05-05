@@ -50,6 +50,8 @@ def send_mail(haus, subject, body):
     msg["From"] = MAIL_FROM
     msg["To"] = mail_to
     msg["Cc"] = ", ".join(CC_RECIPIENTS)
+    msg["Precedence"] = "bulk"
+    msg["Auto-Submitted"] = "auto-generated"
     msg.set_content(body)
     all_recipients = [mail_to] + CC_RECIPIENTS
     
