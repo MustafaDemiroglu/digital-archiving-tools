@@ -14,7 +14,8 @@ stock=$(echo "$relate_stock" | cut -d'/' -f2)
 
 # Construct paths
 stock_full_path="${base_path_ceph}/${archive}/${stock}"
-stock_full_path_secure="${base_path_ceph}/secure/${archive}/${stock}"
+stock_secure="${base_path_ceph}/secure/${archive}/${stock}"
+stock_fremd="${base_path_ceph}/fremdarchivalien/${archive}/${stock}"
 kitodo_process_folder="${kitodo_metadata_path}/${kitodo_processid}"
 generation_list="${kitodo_process_folder}/generierung.list"
 
@@ -24,7 +25,7 @@ if [ -f "$generation_list" ]; then
 fi
 
 # Find files and write to generation list
-if find "$stock_full_path" "$stock_full_path_secure" -type f > "$generation_list" 2>/dev/null; then
+if find "$stock_full_path" "$stock_secure" "$stock_fremd" -type f > "$generation_list" 2>/dev/null; then
 	echo "Generation list created succesfully: $generation_list"
 else
 	echo "Error: Failed to create generation list!"
