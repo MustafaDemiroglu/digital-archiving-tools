@@ -22,11 +22,16 @@ log_error() { echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
 # 1- Check if this workflow step is relevant 
 log_info "Checking process status..."
 
-# only handle unknown or multimatch
+# only handle unknown or multimatch if processtitel doesn't start with Unbekannt or Multimatch
 if [[ -n "${meta_document_type}" ]]; then
 	# if document type exists use metadata
     if [[ "${vze_unknown}" != "true" && "${vze_multi}" != "true" ]]; then
         log_info "Process is not Unknown or Multimatch (document_type based). Nothing to do."
+        exit 0
+    fi
+	# if processtitel doesn't start with Unbekannt or Multimatch
+	if [[ ! "${kitodo_processtitle}" =~ ^Unbekannt_ && ! "${kitodo_processtitle}" =~ ^Multimatch_ ]]; then
+        log_info "Process is not Unknown or Multimatch (processtitel based). Nothing to do."
         exit 0
     fi
 else
