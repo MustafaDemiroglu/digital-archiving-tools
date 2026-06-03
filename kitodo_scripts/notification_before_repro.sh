@@ -40,6 +40,7 @@ else
         log_info "Process is not Unknown or Multimatch (processtitel based). Nothing to do."
         exit 0
     fi
+fi
 
 # Fremdarchivalien detection
 is_fremdarchivalien="false"
