@@ -2,8 +2,9 @@
 
 ###############################################################################
 # Script Name : cleanup_transfer.sh
-# Version     : 1.3
+# Version     : 2.1
 # Author      : Mustafa Demiroglu
+# Date		  : 11.06.2026	
 # Purpose     :
 #   After a transfer/Lieferung has been ingested to /media/cepheus,
 #   verify each file by MD5 hash and PERMANENTLY DELETE confirmed copies.
@@ -16,8 +17,7 @@
 #   <source_folder>   : Root of the transfer/Lieferung (e.g. /mnt/transfer)
 #
 # Safety features:
-#   - Dry-run mode by default (set DRY_RUN=0 to actually delete)
-#   - Full log written to /media/cepheus/ingest/hdd_upload/cleanup_<timestamp>.log
+#   - Full log written to cleanup_<timestamp>.log
 #   - Summary counters at the end
 #   - Never touches /media/cepheus itself
 ###############################################################################
@@ -25,9 +25,8 @@
 set -euo pipefail
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-DRY_RUN="${DRY_RUN:-1}"          # 1 = simulate only, 0 = real deletions
 CEPHEUS_ROOT="/media/cepheus"
-LOG_DIR="/media/cepheus/ingest/hdd_upload"
+LOG_DIR="$PWD"
 SOURCE_ROOT="${1:-}"
 
 # Metadata / checksum patterns to remove after MD5 phase
@@ -132,14 +131,6 @@ if [[ "$SOURCE_ROOT" == "$CEPHEUS_ROOT"* ]]; then
     exit 1
 fi
 
-# Ensure log directory exists
-if [[ ! -d "$LOG_DIR" ]]; then
-    mkdir -p "$LOG_DIR" || {
-        echo "ERROR: Could not create log directory: $LOG_DIR"
-        exit 1
-    }
-fi
-
 # ── Logging ───────────────────────────────────────────────────────────────────
 datum=$(date +%Y%m%d_%H%M%S)
 LOG_FILE="$LOG_DIR/cleanup_${datum}.log"
@@ -156,12 +147,6 @@ log "  cleanup_transfer.sh  —  started $datum"
 log "  Source  : $SOURCE_ROOT"
 log "  Cepheus : $CEPHEUS_ROOT"
 log "  Log     : $LOG_FILE"
-if [[ "$DRY_RUN" -eq 1 ]]; then
-    log "  MODE    : DRY-RUN (no files will be deleted)"
-    log "  To run for real: DRY_RUN=0 $0 $SOURCE_ROOT"
-else
-    log "  MODE    : LIVE (files WILL be deleted)"
-fi
 log "############################################################"
 
 # ── Helper functions ──────────────────────────────────────────────────────────
@@ -182,22 +167,14 @@ get_cepheus_paths() {
 
 safe_rm_file() {
     local f="$1"
-    local reason="$2"
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        log_action "DRY-RM" "$f  ($reason)"
-    else
-        rm -f "$f" && log_action "DELETED" "$f  ($reason)" || log_action "ERROR" "Could not delete $f"
-    fi
+    local reason="$2" 
+    rm -f "$f" && log_action "DELETED" "$f  ($reason)" || log_action "ERROR" "Could not delete $f"
 }
 
 safe_rm_dir() {
     local d="$1"
     local reason="$2"
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        log_action "DRY-RMDIR" "$d  ($reason)"
-    else
-        rm -rf "$d" && log_action "RMDIR" "$d  ($reason)" || log_action "ERROR" "Could not remove dir $d"
-    fi
+    rm -rf "$d" && log_action "RMDIR" "$d  ($reason)" || log_action "ERROR" "Could not remove dir $d"
 }
 
 # ── Counters ──────────────────────────────────────────────────────────────────
@@ -369,20 +346,13 @@ done
 # ── PHASE 5 : Remove empty directories (bottom-up) ───────────────────────────
 log ""
 log "═══ PHASE 5: Empty directory removal ═══"
-
-if [[ "$DRY_RUN" -eq 1 ]]; then
-    while IFS= read -r d; do
-        log_action "DRY-RMDIR" "$d  (empty)"
+while IFS= read -r d; do
+    rmdir "$d" 2>/dev/null && {
+        log_action "RMDIR" "$d  (empty)"
         ((cnt_empty_dirs++)) || true
-    done < <(find "$SOURCE_ROOT" -mindepth 1 -type d -empty | sort -r)
-else
-    while IFS= read -r d; do
-        rmdir "$d" 2>/dev/null && {
-            log_action "RMDIR" "$d  (empty)"
-            ((cnt_empty_dirs++)) || true
-        } || true
-    done < <(find "$SOURCE_ROOT" -mindepth 1 -type d | sort -r)
-fi
+    } || true
+done < <(find "$SOURCE_ROOT" -mindepth 1 -type d | sort -r)
+
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 log ""
@@ -396,10 +366,5 @@ log "  Metadata files removed     : $cnt_meta"
 log "  Hidden items removed       : $cnt_hidden"
 log "  System/junk items removed  : $cnt_system"
 log "  Empty dirs removed         : $cnt_empty_dirs"
-if [[ "$DRY_RUN" -eq 1 ]]; then
-    log ""
-    log "  *** DRY-RUN — nothing was actually deleted ***"
-    log "  *** Run with DRY_RUN=0 to perform real cleanup ***"
-fi
 log "############################################################"
 log "Log saved to: $LOG_FILE"
