@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : cleanup_transfer.sh
-# Version     : 2.1
+# Version     : 2.3.1
 # Author      : Mustafa Demiroglu
 # Date		  : 11.06.2026	
 # Purpose     :
@@ -234,6 +234,21 @@ process_leaf_folder() {
     log ""
     log "  Folder: $rel"
 
+	# Check first if dir in Cepeus exists
+	local found_candidate=0
+	
+    while IFS= read -r cdir; do
+        if [[ -d "$cdir" ]]; then
+            found_candidate=1
+            break
+        fi
+    done < <(get_cepheus_paths "$rel")
+	
+    if [[ "$found_candidate" -eq 0 ]]; then
+        log "    SKIP: no matching folder in cepheus"
+        return
+    fi
+	
     # Build source MD5 map
     declare -A src_map   # md5 -> filepath
     while IFS= read -r -d '' f; do
