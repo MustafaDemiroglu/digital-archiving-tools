@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : cleanup_transfer.sh
-# Version     : 2.3.1
+# Version     : 2.5.0
 # Author      : Mustafa Demiroglu
 # Date		  : 11.06.2026	
 # Purpose     :
@@ -180,6 +180,9 @@ safe_rm_dir() {
 # ── Counters ──────────────────────────────────────────────────────────────────
 cnt_verified=0
 cnt_no_match=0
+cnt_dirs_no_match=0
+cnt_dirs_file_count_mismatch=0
+cnt_dirs_size_mismatch=0
 cnt_deleted=0
 cnt_meta=0
 cnt_hidden=0
@@ -234,7 +237,7 @@ process_leaf_folder() {
     log ""
     log "  Folder: $rel"
 
-	# Check first if dir in Cepheus exists
+	# 1- Check first if dir in Cepheus exists
 	local found_candidate=0
 	
     while IFS= read -r cdir; do
@@ -245,10 +248,31 @@ process_leaf_folder() {
     done < <(get_cepheus_paths "$rel")
 	
     if [[ "$found_candidate" -eq 0 ]]; then
+		((cnt_dirs_no_match++))
         log "    SKIP: no matching folder in cepheus"
         return
     fi
 	
+	# 2 - Check files count only for warning
+	src_count=$(find "$folder" -type f | wc -l)
+	ceph_count=$(find "$cdir" -type f | wc -l)
+
+	if [[ "$src_count" -ne "$ceph_count" ]]; then
+		((cnt_dirs_file_count_mismatch++))
+		log "    WARN: file count mismatch (src=$src_count, cepheus=$ceph_count)"
+		return
+	fi
+	
+	# 2 - Check folder sizes only for warning
+	src_size=$(find "$folder" -type f -printf '%s\n' | awk '{s+=$1} END {print s+0}')
+	ceph_size=$(find "$cdir" -type f -printf '%s\n' | awk '{s+=$1} END {print s+0}')
+
+	if [[ "$src_size" -ne "$ceph_size" ]]; then
+		((cnt_dirs_size_mismatch++))
+		log "    WARN: size mismatch (src=$src_size bytes, cepheus=$ceph_size bytes)"
+		return
+	fi
+
     # Build source MD5 map
     declare -A src_map   # md5 -> filepath
     while IFS= read -r -d '' f; do
@@ -374,12 +398,15 @@ log ""
 log "############################################################"
 log "  SUMMARY"
 log "────────────────────────────────────────────────────────────"
-log "  MD5-verified files found   : $cnt_verified"
-log "  Files/folders deleted(P1)  : $cnt_deleted"
-log "  Files NOT in cepheus(kept) : $cnt_no_match"
-log "  Metadata files removed     : $cnt_meta"
-log "  Hidden items removed       : $cnt_hidden"
-log "  System/junk items removed  : $cnt_system"
-log "  Empty dirs removed         : $cnt_empty_dirs"
+log "  MD5-verified files found   	: $cnt_verified"
+log "  Files/folders deleted(P1)  	: $cnt_deleted"
+log "  Folders NOT in cepheus(kept) : $cnt_dirs_no_match"
+log "  Files count NOT match (kept)	: $cnt_dirs_file_count_mismatch"
+log "  Folder size NOT match (kept)	: $cnt_dirs_size_mismatch"
+log "  Files NOT in cepheus(kept) 	: $cnt_no_match"
+log "  Metadata files removed     	: $cnt_meta"
+log "  Hidden items removed       	: $cnt_hidden"
+log "  System/junk items removed  	: $cnt_system"
+log "  Empty dirs removed         	: $cnt_empty_dirs"
 log "############################################################"
 log "Log saved to: $LOG_FILE"
