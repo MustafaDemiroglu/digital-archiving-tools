@@ -2,7 +2,7 @@
 
 ###############################################################################
 # Script Name : cleanup_transfer.sh
-# Version     : 2.5.0
+# Version     : 2.5.1
 # Author      : Mustafa Demiroglu
 # Date		  : 11.06.2026	
 # Purpose     :
@@ -248,7 +248,7 @@ process_leaf_folder() {
     done < <(get_cepheus_paths "$rel")
 	
     if [[ "$found_candidate" -eq 0 ]]; then
-		((cnt_dirs_no_match++))
+		((cnt_dirs_no_match++)) || true
         log "    SKIP: no matching folder in cepheus"
         return
     fi
@@ -258,7 +258,7 @@ process_leaf_folder() {
 	ceph_count=$(find "$cdir" -type f | wc -l)
 
 	if [[ "$src_count" -ne "$ceph_count" ]]; then
-		((cnt_dirs_file_count_mismatch++))
+		((cnt_dirs_file_count_mismatch++)) || true
 		log "    WARN: file count mismatch (src=$src_count, cepheus=$ceph_count)"
 		return
 	fi
@@ -268,7 +268,7 @@ process_leaf_folder() {
 	ceph_size=$(find "$cdir" -type f -printf '%s\n' | awk '{s+=$1} END {print s+0}')
 
 	if [[ "$src_size" -ne "$ceph_size" ]]; then
-		((cnt_dirs_size_mismatch++))
+		((cnt_dirs_size_mismatch++)) || true
 		log "    WARN: size mismatch (src=$src_size bytes, cepheus=$ceph_size bytes)"
 		return
 	fi
