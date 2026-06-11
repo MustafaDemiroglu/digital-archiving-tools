@@ -234,7 +234,7 @@ process_leaf_folder() {
     log ""
     log "  Folder: $rel"
 
-	# Check first if dir in Cepeus exists
+	# Check first if dir in Cepheus exists
 	local found_candidate=0
 	
     while IFS= read -r cdir; do
