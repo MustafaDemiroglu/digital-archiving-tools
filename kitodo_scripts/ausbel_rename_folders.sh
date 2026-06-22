@@ -29,7 +29,7 @@ get_lowest_dirs() {
     done
 }
 
-process1_single() {
+rename_folder() {
     local dir="$1"
 
     local base
@@ -99,8 +99,8 @@ process1_single() {
 }
 
 while read -r dir; do
-    process1_single "$dir"
+    rename_folder "$dir"
 done < <(get_lowest_dirs)
 
-echo "Process1 finished successfully."
+echo "Rename Folders Process finished successfully."
 exit 0
