@@ -31,7 +31,7 @@ get_lowest_dirs() {
     done
 }
 
-process3_single() {
+add_testchart() {
     local dir="$1"
 
     # count files
@@ -76,8 +76,8 @@ if [[ ! -f "$TESTCHART" ]]; then
 fi
 
 while read -r dir; do
-    process3_single "$dir"
+    add_testchart "$dir"
 done < <(get_lowest_dirs)
 
-echo "Process3 finished successfully."
+echo "Add Testchart Process finished successfully."
 exit 0

@@ -18,7 +18,7 @@ stock=$(echo "$relate_stock" | cut -d'/' -f2)
 output_folder_path="${base_path_ceph}/derivate_on_demand/${stock}_ausbelichtung"
 
 pad_number() {
-    printf "%05d" "$((10#$1))"
+    printf "%04d" "$((10#$1))"
 }
 
 get_lowest_dirs() {
@@ -29,7 +29,7 @@ get_lowest_dirs() {
     done
 }
 
-process2_single() {
+rename_file() {
     local dir="$1"
 
     for file in "$dir"/*; do
@@ -55,8 +55,8 @@ process2_single() {
 }
 
 while read -r dir; do
-    process2_single "$dir"
+    rename_file "$dir"
 done < <(get_lowest_dirs)
 
-echo "Process2 finished successfully."
+echo "Rename Files Process finished successfully."
 exit 0
