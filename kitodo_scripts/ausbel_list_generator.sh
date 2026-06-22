@@ -7,13 +7,13 @@ if ! source "$(dirname "${0}")"/lib_hla_kitodo.sh; then
     exit 5
 fi
 
-if [[ -z "$processtitle" ]]; then
-    echo "ERROR: processtitle is empty"
+if [[ -z "$kitodo_processtitle" ]]; then
+    echo "ERROR: kitodo_processtitle is empty"
     exit 3
 fi
 
 # Remove 'Unbekannt_' prefix and get first two path segments
-relate_stock="${processtitle#Unbekannt_}"
+relate_stock="${kitodo_processtitle#Unbekannt_}"
 # debug
 echo "RELATE_STOCK=[$relate_stock]"
 archive=$(echo "$relate_stock" | cut -d'/' -f1)

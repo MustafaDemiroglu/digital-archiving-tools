@@ -10,7 +10,7 @@ if ! source "$(dirname "${0}")"/lib_hla_kitodo.sh; then
 fi
 
 # Remove 'Unbekannt_' prefix and get first two path segments
-relate_stock="${processtitle#Unbekannt_}"
+relate_stock="${kitodo_processtitle#Unbekannt_}"
 archive=$(echo "$relate_stock" | cut -d'/' -f1)
 stock=$(echo "$relate_stock" | cut -d'/' -f2)
 
