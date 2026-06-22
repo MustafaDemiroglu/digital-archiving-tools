@@ -15,7 +15,7 @@ archive=$(echo "$relate_stock" | cut -d'/' -f1)
 stock=$(echo "$relate_stock" | cut -d'/' -f2)
 
 # Target path
-target_root="${base_path_ceph}/derivate_on_demand/${stock}_ausbelichtung/${archive}/${stock}"
+target_root="${base_path_ceph}/derivate_on_demand/07_${archive}_${stock}/${archive}/${stock}"
 
 # Create target root if missing
 mkdir -p "$target_root"

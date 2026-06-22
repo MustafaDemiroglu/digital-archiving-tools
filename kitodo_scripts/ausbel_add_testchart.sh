@@ -15,7 +15,7 @@ archive=$(echo "$relate_stock" | cut -d'/' -f1)
 stock=$(echo "$relate_stock" | cut -d'/' -f2)
 
 # Construct paths
-output_folder_path="${base_path_ceph}/derivate_on_demand/${stock}_ausbelichtung"
+output_folder_path="${base_path_ceph}/derivate_on_demand/07_${archive}_${stock}"
 
 TESTCHART="/media/cepheus/ingest/testcharts_bestandsblatt/testcharts/_0000.jpg"
 

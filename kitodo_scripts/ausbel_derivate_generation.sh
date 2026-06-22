@@ -15,7 +15,7 @@ stock=$(echo "$relate_stock" | cut -d'/' -f2)
 # Construct paths
 kitodo_process_folder="${kitodo_metadata_path}/${kitodo_processid}"
 generation_list="${kitodo_process_folder}/generierung.list"
-output_folder_path="${base_path_ceph}/derivate_on_demand/${stock}_ausbelichtung"
+output_folder_path="${base_path_ceph}/derivate_on_demand/07_${archive}_${stock}"
 logfile="${kitodo_process_folder}/generate_derivate.log"
 
 # Clear old log if exists

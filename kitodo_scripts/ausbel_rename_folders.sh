@@ -15,7 +15,7 @@ archive=$(echo "$relate_stock" | cut -d'/' -f1)
 stock=$(echo "$relate_stock" | cut -d'/' -f2)
 
 # Construct paths
-output_folder_path="${base_path_ceph}/derivate_on_demand/${stock}_ausbelichtung"
+output_folder_path="${base_path_ceph}/derivate_on_demand/07_${archive}_${stock}"
 
 pad_number() {
     printf "%05d" "$((10#$1))"
