@@ -41,13 +41,6 @@ for folder in "${special_folders[@]}"; do
 
     echo "Processing folder: ${folder}"
 
-    target_path="${target_root}/${folder}"
-
-    mkdir -p "$target_path"
-
-    chgrp -R hladigi "$target_path" 2>/dev/null || true
-    chmod -R 775 "$target_path" 2>/dev/null || true
-
     candidate_paths=(
         "${base_path_ceph}/${archive}/${stock}/${folder}"
         "${base_path_ceph}/secure/${archive}/${stock}/${folder}"
@@ -56,29 +49,85 @@ for folder in "${special_folders[@]}"; do
 
     found_source=false
 
+    # Special handling for bestandsblatt
+    if [[ "$folder" == "bestandsblatt" ]]; then
+        ingest_path="/media/cepheus/ingest/testcharts_bestandsblatt/bestandsblatt"
+        ingest_files=$(find "$ingest_path" \
+            -type f \
+            -name "*${archive}_${stock}*" 2>/dev/null)
+        target_path="${target_root}/${folder}"
+
+        # First check normal sources
+        for source_path in "${candidate_paths[@]}"; do
+            if [[ -d "$source_path" ]]; then
+                found_source=true
+                mkdir -p "$target_path"
+                echo "Synchronizing bestandsblatt:"
+                echo " Source: ${source_path}"
+                echo " Target: ${target_path}"
+                rsync -av \
+                    --ignore-existing \
+                    "${source_path}/" \
+                    "${target_path}/"
+            fi
+        done
+
+        # If no normal bestandsblatt exists
+        if [[ "$found_source" == false ]]; then
+            if [[ -n "$ingest_files" ]]; then
+                mkdir -p "$target_path"
+                # Target empty -> copy from ingest
+                if [[ -z "$(ls -A "$target_path")" ]]; then
+                    echo "No bestandsblatt found in archive."
+                    echo "Copying from ingest source."
+                    rsync -av \
+                        $(dirname "$ingest_files")/ \
+                        "$target_path/"
+                else
+                    echo "Checking ingest bestandsblatt against existing target..."
+                    for file in $ingest_files; do
+                        filename=$(basename "$file")
+                        if [[ -f "${target_path}/${filename}" ]]; then
+                            if ! cmp -s \
+                                "$file" \
+                                "${target_path}/${filename}"; then
+                                echo "ERROR:"
+                                echo "Different bestandsblatt detected:"
+                                echo "Source: $file"
+                                echo "Target: ${target_path}/${filename}"
+                                exit 1
+                            fi
+                        fi
+                    done
+                    echo "Bestandsblatt validation successful."
+                fi
+            else
+                echo "WARN: No bestandsblatt source found."
+            fi
+        fi
+        continue
+    fi
+	
     for source_path in "${candidate_paths[@]}"; do
-
         if [[ -d "$source_path" ]]; then
-
             found_source=true
-
+			target_path="${target_root}/${folder}"
+			mkdir -p "$target_path"
+			chgrp -R hladigi "$target_path" 2>/dev/null || true
+			chmod -R 775 "$target_path" 2>/dev/null || true
             echo "Synchronizing:"
             echo "  Source: ${source_path}"
             echo "  Target: ${target_path}"
-
             rsync -av \
                 --ignore-existing \
                 "${source_path}/" \
                 "${target_path}/"
-
         fi
-
     done
 
     if [[ "$found_source" == false ]]; then
         echo "WARN: No source folder found for ${folder}"
     fi
-
 done
 
 # Final permission correction
