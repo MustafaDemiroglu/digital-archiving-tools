@@ -24,12 +24,39 @@ if [ -f "$generation_list" ]; then
 	> "$generation_list"
 fi
 
+# validate paths
+valid_paths=()
+
+if [ -d "$stock_full_path" ]; then
+    valid_paths+=("$stock_full_path")
+fi
+
+if [ -d "$stock_secure" ]; then
+    valid_paths+=("$stock_secure")
+fi
+
+if [ -d "$stock_fremd" ]; then
+    valid_paths+=("$stock_fremd")
+fi
+
+# Debug output
+echo "DEBUG: full=$stock_full_path"
+echo "DEBUG: secure=$stock_secure"
+echo "DEBUG: fremd=$stock_fremd"
+
+# Exit if non path exists
+if [ ${#valid_paths[@]} -eq 0 ]; then
+    echo "ERROR: No valid directories found for process $kitodo_processid"
+    exit 2
+fi
+
+# run find ONLY on valid paths
 # Find files and write to generation list
-if find "$stock_full_path" "$stock_secure" "$stock_fremd" -type f > "$generation_list" 2>/dev/null; then
-	echo "Generation list created succesfully: $generation_list"
+if find "${valid_paths[@]}" -type f > "$generation_list" 2>/dev/null; then
+    echo "Generation list created successfully: $generation_list"
 else
-	echo "Error: Failed to create generation list!"
-	exit 1
+    echo "ERROR: find failed and Failed to create generation list!"
+    exit 1
 fi
 
 # Success Exit
