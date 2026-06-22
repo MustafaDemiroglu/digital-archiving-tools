@@ -4,7 +4,7 @@
 set -euo pipefail
 
 # sourcing library and include
-if ! source "$(dirname "${0}")"/lib_hla_kitodo.sh"; then
+if ! source "$(dirname "${0}")"/lib_hla_kitodo.sh; then
     echo "Failed to include library file! Please check."
     exit 5
 fi
