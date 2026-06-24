@@ -58,6 +58,24 @@ else
 	echo "SUCCESS: Derivate generated sucessfully"
 fi
 
+# Normalize secure + fremdarchivalien output
+for special_dir in "secure" "fremdarchivalien"; do
+    src_dir="${output_folder_path}/${special_dir}"
+
+    if [ -d "$src_dir" ]; then
+        echo "INFO: Merging $src_dir into $output_folder_path"
+
+        # move contents safely
+        rsync -a --remove-source-files "$src_dir/" "$output_folder_path/"
+
+        # cleanup empty directories left behind
+        find "$src_dir" -type d -empty -delete
+
+        # remove root dir if empty
+        rmdir "$src_dir" 2>/dev/null || true
+    fi
+done
+
 # Success Exit
 echo "Script finished its Job successfully."
 exit 0

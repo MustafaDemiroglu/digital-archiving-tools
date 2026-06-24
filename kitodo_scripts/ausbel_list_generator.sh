@@ -61,10 +61,15 @@ fi
 
 # run find ONLY on valid paths
 # Find files and write to generation list
-if find "${valid_paths[@]}" -type f > "$generation_list" 2>/dev/null; then
+find "${valid_paths[@]}" -type f \( \
+    -iname "*.tif" -o -iname "*.tiff" -o \
+    -iname "*.jpg" -o -iname "*.jpeg" \
+\) > "$generation_list" 2>/dev/null
+
+if [[ -s "$generation_list" ]]; then
     echo "Generation list created successfully: $generation_list"
 else
-    echo "ERROR: find failed and Failed to create generation list!"
+    echo "ERROR: No matching files found or find failed!"
     exit 1
 fi
 
