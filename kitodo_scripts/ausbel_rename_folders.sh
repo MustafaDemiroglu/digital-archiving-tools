@@ -84,6 +84,50 @@ rename_folder() {
 		fi
 		return
 	fi
+	
+	# generic signature: p_ii_123--4-1, p_i_123, p_iii_123--5, a_ii_123--3, b_ii_123, m_ii_123
+	if [[ "$base" =~ ^(.+_)([0-9]+)$ ]]; then
+
+		prefix="${BASH_REMATCH[1]}"
+		num1=$(printf "%05d" "$((10#${BASH_REMATCH[2]}))")
+
+		padded="${prefix}${num1}"
+
+		if [[ "$base" != "$padded" ]]; then
+			mv "$dir" "$parent/$padded"
+			echo "Renamed folder: $dir -> $parent/$padded"
+		fi
+		return
+
+	elif [[ "$base" =~ ^(.+_)([0-9]+)--([0-9]+)$ ]]; then
+
+		prefix="${BASH_REMATCH[1]}"
+		num1=$(printf "%05d" "$((10#${BASH_REMATCH[2]}))")
+		num2=$(printf "%03d" "$((10#${BASH_REMATCH[3]}))")
+
+		padded="${prefix}${num1}--${num2}"
+
+		if [[ "$base" != "$padded" ]]; then
+			mv "$dir" "$parent/$padded"
+			echo "Renamed folder: $dir -> $parent/$padded"
+		fi
+		return
+
+	elif [[ "$base" =~ ^(.+_)([0-9]+)--([0-9]+)-([0-9]+)$ ]]; then
+
+		prefix="${BASH_REMATCH[1]}"
+		num1=$(printf "%05d" "$((10#${BASH_REMATCH[2]}))")
+		num2=$(printf "%03d" "$((10#${BASH_REMATCH[3]}))")
+		num3=$(printf "%02d" "$((10#${BASH_REMATCH[4]}))")
+
+		padded="${prefix}${num1}--${num2}-${num3}"
+
+		if [[ "$base" != "$padded" ]]; then
+			mv "$dir" "$parent/$padded"
+			echo "Renamed folder: $dir -> $parent/$padded"
+		fi
+		return
+	fi
 
     # prefix + number + text + number
     if [[ "$base" =~ ^(.*?)([0-9]+)([^0-9]+)([0-9]+)$ ]]; then
