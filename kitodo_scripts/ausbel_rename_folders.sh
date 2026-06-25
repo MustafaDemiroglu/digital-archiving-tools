@@ -23,7 +23,10 @@ pad_number() {
 
 get_lowest_dirs() {
     find "$output_folder_path" -type d | while read -r dir; do
-        if ! find "$dir" -mindepth 1 -type d | read; then
+		if [[ "$dir" == "$output_folder_path" ]]; then
+            continue
+        fi
+        if [[ -z "$(find "$dir" -mindepth 1 -type d -print -quit 2>/dev/null)" ]]; then
             echo "$dir"
         fi
     done
@@ -67,6 +70,20 @@ rename_folder() {
         fi
         return
     fi
+	
+	# two-part numbers: 211-212 -> 00211--212
+	if [[ "$base" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+		num1=$(pad_number "${BASH_REMATCH[1]}")
+		num2="${BASH_REMATCH[2]}"
+
+		padded="${num1}-${num2}"
+
+		if [[ "$base" != "$padded" ]]; then
+			mv "$dir" "$parent/$padded"
+			echo "Renamed folder: $dir -> $parent/$padded"
+		fi
+		return
+	fi
 
     # prefix + number + text + number
     if [[ "$base" =~ ^(.*?)([0-9]+)([^0-9]+)([0-9]+)$ ]]; then
