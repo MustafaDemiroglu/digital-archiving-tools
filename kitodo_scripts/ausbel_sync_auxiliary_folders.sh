@@ -50,63 +50,87 @@ for folder in "${special_folders[@]}"; do
     found_source=false
 
     # Special handling for bestandsblatt
-    if [[ "$folder" == "bestandsblatt" ]]; then
-        ingest_path="/media/cepheus/ingest/testcharts_bestandsblatt/bestandsblatt"
-        ingest_files=$(find "$ingest_path" \
-            -type f \
-            -name "*${archive}_${stock}*" 2>/dev/null)
-        target_path="${target_root}/${folder}"
+	if [[ "$folder" == "bestandsblatt" ]]; then
 
-        # First check normal sources
-        for source_path in "${candidate_paths[@]}"; do
-            if [[ -d "$source_path" ]]; then
-                found_source=true
-                mkdir -p "$target_path"
-                echo "Synchronizing bestandsblatt:"
-                echo " Source: ${source_path}"
-                echo " Target: ${target_path}"
-                rsync -av \
-                    --ignore-existing \
-                    "${source_path}/" \
-                    "${target_path}/"
-            fi
-        done
+		ingest_path="/media/cepheus/ingest/testcharts_bestandsblatt/bestandsblatt"
+		target_path="${target_root}/${folder}"
 
-        # If no normal bestandsblatt exists
-        if [[ "$found_source" == false ]]; then
-            if [[ -n "$ingest_files" ]]; then
-                mkdir -p "$target_path"
-                # Target empty -> copy from ingest
-                if [[ -z "$(ls -A "$target_path")" ]]; then
-                    echo "No bestandsblatt found in archive."
-                    echo "Copying from ingest source."
-                    rsync -av \
-                        $(dirname "$ingest_files")/ \
-                        "$target_path/"
-                else
-                    echo "Checking ingest bestandsblatt against existing target..."
-                    for file in $ingest_files; do
-                        filename=$(basename "$file")
-                        if [[ -f "${target_path}/${filename}" ]]; then
-                            if ! cmp -s \
-                                "$file" \
-                                "${target_path}/${filename}"; then
-                                echo "ERROR:"
-                                echo "Different bestandsblatt detected:"
-                                echo "Source: $file"
-                                echo "Target: ${target_path}/${filename}"
-                                exit 1
-                            fi
-                        fi
-                    done
-                    echo "Bestandsblatt validation successful."
-                fi
-            else
-                echo "WARN: No bestandsblatt source found."
-            fi
-        fi
-        continue
-    fi
+		# First check normal sources
+		for source_path in "${candidate_paths[@]}"; do
+			if [[ -d "$source_path" ]]; then
+				found_source=true
+				mkdir -p "$target_path"
+
+				echo "Synchronizing bestandsblatt:"
+				echo " Source: ${source_path}"
+				echo " Target: ${target_path}"
+
+				rsync -av \
+					--ignore-existing \
+					"${source_path}/" \
+					"${target_path}/"
+			fi
+		done
+
+		# No regular bestandsblatt found
+		if [[ "$found_source" == false ]]; then
+
+			mapfile -t ingest_files < <(
+				find "$ingest_path" \
+					-type f \
+					-name "*${archive}_${stock}*" \
+					2>/dev/null
+			)
+
+			if (( ${#ingest_files[@]} == 0 )); then
+				echo "WARN: No bestandsblatt source found."
+				continue
+			fi
+
+			if (( ${#ingest_files[@]} > 1 )); then
+				echo "ERROR: Multiple bestandsblatt files found:"
+				printf '%s\n' "${ingest_files[@]}"
+				exit 1
+			fi
+
+			mkdir -p "$target_path"
+
+			# target empty -> copy file
+			if [[ -z "$(ls -A "$target_path" 2>/dev/null)" ]]; then
+
+				echo "No bestandsblatt found in archive."
+				echo "Copying from ingest source."
+
+				rsync -av \
+					"${ingest_files[0]}" \
+					"$target_path/"
+
+			else
+
+				echo "Checking ingest bestandsblatt against existing target..."
+
+				filename=$(basename "${ingest_files[0]}")
+
+				if [[ -f "${target_path}/${filename}" ]]; then
+
+					if ! cmp -s \
+						"${ingest_files[0]}" \
+						"${target_path}/${filename}"
+					then
+						echo "ERROR:"
+						echo "Different bestandsblatt detected:"
+						echo "Source: ${ingest_files[0]}"
+						echo "Target: ${target_path}/${filename}"
+						exit 1
+					fi
+				fi
+
+				echo "Bestandsblatt validation successful."
+			fi
+		fi
+
+		continue
+	fi
 	
     for source_path in "${candidate_paths[@]}"; do
         if [[ -d "$source_path" ]]; then
