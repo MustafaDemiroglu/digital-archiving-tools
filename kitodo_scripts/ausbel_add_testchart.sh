@@ -21,7 +21,7 @@ TESTCHART="/media/cepheus/ingest/testcharts_bestandsblatt/testcharts/_0000.jpg"
 
 # true  = only add testchart if folder has more than 2 files
 # false = always add testchart if matching file exists
-ONLY_IF_MORE_THAN_TWO_FILES=true
+ONLY_IF_MORE_THAN_TWO_FILES=false
 
 get_lowest_dirs() {
     find "$output_folder_path" -type d | while read -r dir; do
@@ -54,7 +54,7 @@ add_testchart() {
             prefix="${BASH_REMATCH[1]}"
             extension="${BASH_REMATCH[3]}"
 
-            newfile="${dir}/${prefix}00000${extension}"
+            newfile="${dir}/${prefix}0000${extension}"
 
             if [[ ! -f "$newfile" ]]; then
                 cp "$TESTCHART" "$newfile"
