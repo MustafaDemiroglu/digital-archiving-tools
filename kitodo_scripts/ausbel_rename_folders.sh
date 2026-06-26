@@ -57,21 +57,8 @@ rename_folder() {
         return
     fi
 
-    # two-part numbers: 145--3 -> 00145--003
-    if [[ "$base" =~ ^([0-9]+)--([0-9]+)$ ]]; then
-        num1=$(pad_number "${BASH_REMATCH[1]}")
-        num2=$(printf "%03d" "$((10#${BASH_REMATCH[2]}))")
 
-        padded="${num1}--${num2}"
-
-        if [[ "$base" != "$padded" ]]; then
-            mv "$dir" "$parent/$padded"
-            echo "Renamed folder: $dir -> $parent/$padded"
-        fi
-        return
-    fi
-	
-	# two-part numbers: 211-212 -> 00211--212
+	# two-part numbers: 211-212 -> 00211-212
 	if [[ "$base" =~ ^([0-9]+)-([0-9]+)$ ]]; then
 		num1=$(pad_number "${BASH_REMATCH[1]}")
 		num2="${BASH_REMATCH[2]}"
@@ -85,6 +72,20 @@ rename_folder() {
 		return
 	fi
 	
+    # two-part numbers: 145--3 -> 00145--003
+    if [[ "$base" =~ ^([0-9]+)--([0-9]+)$ ]]; then
+        num1=$(pad_number "${BASH_REMATCH[1]}")
+        num2=$(printf "%03d" "$((10#${BASH_REMATCH[2]}))")
+
+        padded="${num1}--${num2}"
+
+        if [[ "$base" != "$padded" ]]; then
+            mv "$dir" "$parent/$padded"
+            echo "Renamed folder: $dir -> $parent/$padded"
+        fi
+        return
+    fi
+
 	# generic signature: p_ii_123--4-1, p_i_123, p_iii_123--5, a_ii_123--3, b_ii_123, m_ii_123
 	if [[ "$base" =~ ^(.+_)([0-9]+)$ ]]; then
 
@@ -128,9 +129,9 @@ rename_folder() {
 		fi
 		return
 	fi
-
+	
     # prefix + number + text + number
-    if [[ "$base" =~ ^(.*?)([0-9]+)([^0-9]+)([0-9]+)$ ]]; then
+	if [[ "$base" =~ ^([^0-9]+)([0-9]+)([^0-9]+)([0-9]+)$ ]]; then
         prefix="${BASH_REMATCH[1]}"
         num1="${BASH_REMATCH[2]}"
         middle="${BASH_REMATCH[3]}"
