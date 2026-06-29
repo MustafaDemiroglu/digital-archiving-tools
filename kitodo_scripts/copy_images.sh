@@ -11,7 +11,7 @@ fi
 search_folder_vze
 
 final_kitodo_image_path="${kitodo_metadata_path}/${kitodo_processid}/images"
-final_image_path="/media/cepheus/derivate_on_demand/${meta_delivery}/secure/${full_sig_path}"
+final_image_path="/media/cepheus/derivate/derivate_on_demand/${meta_delivery}/secure/${full_sig_path}"
 final_thumb_path="${final_image_path}/${kitodo_img_thumb_name}"
 
 echo "Creating folder structure: ${final_image_path}"
