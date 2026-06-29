@@ -11,15 +11,20 @@ fi
 search_folder_vze
 
 final_kitodo_image_path="${kitodo_metadata_path}/${kitodo_processid}/images"
-final_path_new="/media/cepheus/derivate_on_demand/${meta_delivery}/secure/${full_sig_path}"
+final_image_path="/media/cepheus/derivate_on_demand/${meta_delivery}/secure/${full_sig_path}"
+final_thumb_path="${final_image_path}/${kitodo_img_thumb_name}"
 
-echo "Creating folder structure: ${final_path_new}"
-sg "${group}" -c "mkdir -vp ${final_path_new}"
-
+echo "Creating folder structure: ${final_image_path}"
+sg "${group}" -c "mkdir -vp ${final_image_path}"
 echo "Copying max images to final structure"
-rsync -av --ignore-existing "${final_kitodo_image_path}/${kitodo_img_max_name}/" "${final_path_new}/"
-
+rsync -a --ignore-existing "${final_kitodo_image_path}/${kitodo_img_max_name}/" "${final_image_path}/"
 echo "Max images copied successfully."
+
+echo "Creating thumbnails folder structure: ${final_thumb_path}"
+sg "${group}" -c "mkdir -vp ${final_thumb_path}"
+echo "Copying thumbnails to final structure"
+rsync -a --ignore-existing "${final_kitodo_image_path}/${kitodo_img_thumb_name}/" "${final_thumb_path}/"
+echo "Thumbnails copied successfully."	
 	
 if ! find "${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_img_tiff_name}" -type f -delete; then
     echo "Error by deleting tiff working copy files! Aborting."
