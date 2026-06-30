@@ -20,11 +20,12 @@ echo "Copying max images to final structure"
 rsync -a --ignore-existing "${final_kitodo_image_path}/${kitodo_img_max_name}/" "${final_image_path}/"
 echo "Max images copied successfully."
 
-echo "Creating thumbnails folder structure: ${final_thumb_path}"
-sg "${group}" -c "mkdir -vp ${final_thumb_path}"
-echo "Copying thumbnails to final structure"
-rsync -a --ignore-existing "${final_kitodo_image_path}/${kitodo_img_thumb_name}/" "${final_thumb_path}/"
-echo "Thumbnails copied successfully."	
+#Thumbnails is not needed
+#echo "Creating thumbnails folder structure: ${final_thumb_path}"
+#sg "${group}" -c "mkdir -vp ${final_thumb_path}"
+#echo "Copying thumbnails to final structure"
+#rsync -a --ignore-existing "${final_kitodo_image_path}/${kitodo_img_thumb_name}/" "${final_thumb_path}/"
+#echo "Thumbnails copied successfully."	
 	
 if ! find "${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_img_tiff_name}" -type f -delete; then
     echo "Error by deleting tiff working copy files! Aborting."
