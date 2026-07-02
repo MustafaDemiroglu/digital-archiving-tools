@@ -23,7 +23,7 @@ fi
 
 log_info "Starting database soft delete..."
 
-python3 "${PYTHON_SCRIPT}"
+python3 "${PYTHON_SCRIPT}" "$@"
 
 exit_code=$?
 
