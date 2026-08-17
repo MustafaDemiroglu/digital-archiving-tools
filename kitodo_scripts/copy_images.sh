@@ -7,7 +7,7 @@ if ! source "$(dirname "${0}")"/lib_hla_kitodo.sh; then
     exit 5
 fi
 
-# search for currernt folder of vze and filling variables (folder_path, full_hdd_folders, hdd_root_folder and hdd_sub_folder)
+# search for current folder of vze and filling variables (folder_path, full_hdd_folders, hdd_root_folder and hdd_sub_folder)
 search_folder_vze
 
 final_kitodo_image_path="${kitodo_metadata_path}/${kitodo_processid}/images"
