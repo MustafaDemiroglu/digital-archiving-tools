@@ -1,0 +1,421 @@
+#!/bin/bash
+# (processid) (processtitle) ${meta.unitIDCUSTOM} ${meta.archiveNameCUSTOM} ${meta.stockUnitIDCUSTOM} ${meta.accessrestrict}
+
+# ============================================================
+# Prepare Digishare files for Kitodo Ingest
+# ============================================================
+
+# sourcing library
+if ! source "$(dirname "${0}")"/lib_hla_kitodo.sh; then
+    echo "Failed to include library file! Please check."
+    exit 5
+fi
+
+
+# ============================================================
+# Define script variables
+# ============================================================
+
+# Digishare upload directory
+base_path_digishare_upload="/media/cepheus/ingest/digishare_upload"
+
+
+# ============================================================
+# Read signature values from Kitodo
+# ============================================================
+
+# shellcheck disable=SC2154
+# exported as env over read_parameters_and_export_json_to_env function
+archive_sig="${meta_archiveNameCUSTOM}"
+
+# shellcheck disable=SC2154
+# exported as env over read_parameters_and_export_json_to_env function
+fond_sig="${meta_stockUnitIDCUSTOM}"
+
+# shellcheck disable=SC2154
+# exported as env over read_parameters_and_export_json_to_env function
+vze_sig="${meta_unitIDCUSTOM}"
+
+
+# Full signature path
+full_sig_path="${archive_sig}/${fond_sig}/${vze_sig}"
+
+
+# Split full signature path
+haus="${full_sig_path}" 
+haus=$(echo "${full_sig_path}" | cut -d'/' -f1)
+
+bestand=$(echo "${full_sig_path}" | cut -d'/' -f2)
+
+signatur=$(echo "${full_sig_path}" | cut -d'/' -f3)
+
+
+# ============================================================
+# Check signature values
+# ============================================================
+
+if [[ -z "${haus}" || -z "${bestand}" || -z "${signatur}" ]]; then
+    echo "ERROR: Could not read the full signature path."
+    echo "Please check the Kitodo metadata."
+    exit 1
+fi
+
+
+# ============================================================
+# Find Digishare source folder
+# ============================================================
+
+case "${haus}" in
+    hstam)
+        source_haus_dir="hla_hstam_transfer"
+        ;;
+    hstad)
+        source_haus_dir="darmstadt_hstad_transfer"
+        ;;
+    adjb)
+        source_haus_dir="hla_adjb_transfer"
+        ;;
+    hhstaw)
+        source_haus_dir="hla_hhstaw_transfer"
+        ;;
+    *)
+        echo "ERROR: No Digishare source folder is defined for archive '${haus}'."
+        echo "Please check the Digishare folder mapping."
+        exit 1
+        ;;
+esac
+
+
+# ============================================================
+# Define source and target paths
+# ============================================================
+
+source_path="${base_path_digishare_upload}/${source_haus_dir}/${bestand}/${signatur}"
+
+
+# Create upload folder name
+upload_date=$(date '+%Y-%m-%d')
+upload_date_compact=$(date '+%Y%m%d')
+
+upload_folder_path="${upload_date}_${haus}_digishare"
+
+
+# Final target path
+final_target_path="${base_path_hdd_ingest_ceph}/${upload_folder_path}/${full_sig_path}"
+
+
+# MD5 file name used in Kitodo delivery metadata
+md5_datei_name="${haus}_digishare_${upload_date_compact}"
+
+
+# Real MD5 file including extension
+real_md5_datei="${base_path_hdd_ingest_ceph}/${upload_folder_path}/${md5_datei_name}.md5"
+
+
+# Temporary directory for this process
+tmp_dir=$(mktemp -d "/tmp/digishare_ingest_XXXXXX")
+
+
+# Clean temporary files when the script ends
+cleanup() {
+    rm -rf "${tmp_dir}"
+}
+
+trap cleanup EXIT
+
+
+# Temporary files
+rsync_output="${tmp_dir}/rsync_output.txt"
+md5_entries="${tmp_dir}/md5_entries.txt"
+
+
+# ============================================================
+# Show basic information
+# ============================================================
+
+echo "INFO: Preparing Digishare files for Kitodo Ingest."
+echo "INFO: Archive: ${haus}"
+echo "INFO: Bestand: ${bestand}"
+echo "INFO: Signatur: ${signatur}"
+echo "INFO: Source: ${source_path}"
+echo "INFO: Target: ${final_target_path}"
+
+
+# ============================================================
+# Check source directory
+# ============================================================
+
+if [[ ! -d "${source_path}" ]]; then
+    echo "ERROR: Source folder was not found:"
+    echo "${source_path}"
+    echo "Please check if the Digishare files are available."
+    exit 1
+fi
+
+
+# Check if source directory contains files
+if ! find "${source_path}" -type f -print -quit | grep -q .; then
+    echo "ERROR: Source folder contains no files:"
+    echo "${source_path}"
+    echo "Please check if the Digishare transfer is complete."
+    exit 1
+fi
+
+echo "INFO: Source folder found and contains files."
+
+
+# ============================================================
+# Create target directory
+# ============================================================
+
+if ! sg "${group}" -c "mkdir -vp '${final_target_path}'"; then
+    echo "ERROR: Could not create target folder:"
+    echo "${final_target_path}"
+    exit 1
+fi
+
+echo "INFO: Target folder is ready."
+
+
+# ============================================================
+# Move files with rsync
+# ============================================================
+
+echo "INFO: Moving files to the Kitodo Ingest folder..."
+
+if ! rsync \
+    -rtv \
+    --perms \
+    --chmod=D2770,F0660 \
+    --chown=:"${group}" \
+    --ignore-existing \
+    --remove-source-files \
+    --itemize-changes \
+    --out-format='%i|%n' \
+    "${source_path}/" \
+    "${final_target_path}/" \
+    > "${rsync_output}"; then
+
+    echo "ERROR: File transfer with rsync failed."
+    echo "Please check the source and target folders."
+    exit 1
+fi
+
+
+# ============================================================
+# Read successfully transferred files
+# ============================================================
+
+transferred_count=0
+
+while IFS='|' read -r itemize_code relative_file; do
+
+    # Skip empty lines
+    [[ -z "${itemize_code}" ]] && continue
+    [[ -z "${relative_file}" ]] && continue
+
+    # A new file transferred by rsync starts with >f
+    if [[ "${itemize_code}" == ">f"* ]]; then
+
+        target_file="${final_target_path}/${relative_file}"
+
+        # Make sure the file really exists at the target
+        if [[ ! -f "${target_file}" ]]; then
+            echo "ERROR: Transferred file was not found at target:"
+            echo "${target_file}"
+            exit 1
+        fi
+
+        # Save file for MD5 creation
+        echo "${target_file}" >> "${md5_entries}"
+
+        transferred_count=$((transferred_count + 1))
+
+        echo "INFO: File moved: ${relative_file}"
+    fi
+
+done < "${rsync_output}"
+
+
+# ============================================================
+# Check transfer result
+# ============================================================
+
+if [[ "${transferred_count}" -eq 0 ]]; then
+    echo "ERROR: No new files were moved."
+    echo "Please check the source and target folders."
+    exit 1
+fi
+
+echo "INFO: ${transferred_count} file(s) moved successfully."
+
+
+# ============================================================
+# Remove empty source folders
+# ============================================================
+
+echo "INFO: Removing empty source folders..."
+
+if ! find "${source_path}" -depth -type d -empty -delete; then
+    echo "WARNING: Some empty source folders could not be removed."
+else
+    echo "INFO: Empty source folders removed."
+fi
+
+
+# ============================================================
+# Check MD5 file
+# ============================================================
+
+if [[ -z "${md5_datei_name}" ]]; then
+    echo "ERROR: MD5 file name is not defined."
+    exit 1
+fi
+
+if [[ -z "${real_md5_datei}" ]]; then
+    echo "ERROR: Real MD5 file path is not defined."
+    exit 1
+fi
+
+
+# Create MD5 file if it does not exist
+if [[ ! -f "${real_md5_datei}" ]]; then
+
+    echo "INFO: MD5 file does not exist. Creating it..."
+
+    if ! sg "${group}" -c "touch '${real_md5_datei}' && chmod 0660 '${real_md5_datei}'"; then
+        echo "ERROR: Could not create MD5 file:"
+        echo "${real_md5_datei}"
+        exit 1
+    fi
+
+    echo "INFO: MD5 file created."
+else
+    echo "INFO: Existing MD5 file will be kept."
+fi
+
+
+# ============================================================
+# Generate MD5 entries
+# ============================================================
+
+echo "INFO: Generating MD5 checksums..."
+
+md5_count=0
+
+while IFS= read -r target_file; do
+
+    [[ -z "${target_file}" ]] && continue
+
+    if [[ ! -f "${target_file}" ]]; then
+        echo "ERROR: File for MD5 was not found:"
+        echo "${target_file}"
+        exit 1
+    fi
+
+    if ! md5_line=$(md5sum "${target_file}" 2>/dev/null); then
+        echo "ERROR: Could not generate MD5:"
+        echo "${target_file}"
+        exit 1
+    fi
+
+    md5="${md5_line%% *}"
+
+    # Remove /media/cepheus/ from the path
+    cleaned_path="${target_file#/media/cepheus/}"
+
+    echo "${md5}  ${cleaned_path}" >> "${md5_entries}.ready"
+
+    md5_count=$((md5_count + 1))
+
+done < "${md5_entries}"
+
+
+if [[ "${md5_count}" -eq 0 ]]; then
+    echo "ERROR: No MD5 checksums were generated."
+    exit 1
+fi
+
+echo "INFO: ${md5_count} MD5 checksum(s) generated."
+
+
+# ============================================================
+# Update MD5 file safely
+# ============================================================
+
+echo "INFO: Updating MD5 file..."
+
+(
+    # Only one process may update this MD5 file at a time.
+    if ! flock --exclusive --timeout 300 200; then
+        echo "ERROR: Could not lock MD5 file within 5 minutes."
+        exit 1
+    fi
+
+    # Append new entries.
+    # Existing entries are never removed.
+    if ! cat "${md5_entries}.ready" >> "${real_md5_datei}"; then
+        echo "ERROR: Could not update MD5 file:"
+        echo "${real_md5_datei}"
+        exit 1
+    fi
+
+    # Keep the correct group and permissions.
+    if ! chgrp "${group}" "${real_md5_datei}"; then
+        echo "ERROR: Could not set MD5 file group."
+        exit 1
+    fi
+
+    if ! chmod 0660 "${real_md5_datei}"; then
+        echo "ERROR: Could not set MD5 file permissions."
+        exit 1
+    fi
+
+) 200>"${real_md5_datei}.lock"
+
+if [[ $? -ne 0 ]]; then
+    echo "ERROR: MD5 file update failed."
+    exit 1
+fi
+
+echo "INFO: MD5 file updated successfully."
+
+
+# ============================================================
+# Update Kitodo delivery metadata
+# ============================================================
+
+if [[ -z "${META_FILE:-}" ]]; then
+    echo "ERROR: META_FILE is not defined."
+    echo "Please check the Kitodo library configuration."
+    exit 1
+fi
+
+
+echo "INFO: Updating Kitodo delivery metadata..."
+
+if ! xmlstarlet ed -L \
+    -N kitodo="http://meta.kitodo.org/v1/" \
+    -u "//kitodo:metadata[@name='delivery']/text()" \
+    -v "${md5_datei_name}" \
+    "${META_FILE}"; then
+
+    echo "ERROR: Could not update delivery metadata."
+    exit 1
+fi
+
+echo "INFO: Delivery metadata updated:"
+echo "${md5_datei_name}"
+
+
+# ============================================================
+# Finished
+# ============================================================
+
+echo "INFO: Digishare preparation completed successfully."
+echo "INFO: Files moved: ${transferred_count}"
+echo "INFO: MD5 entries added: ${md5_count}"
+echo "INFO: MD5 file: ${real_md5_datei}"
+echo "INFO: Kitodo delivery: ${md5_datei_name}"
+
+exit 0
