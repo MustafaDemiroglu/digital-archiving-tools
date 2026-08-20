@@ -242,37 +242,28 @@ fi
 echo "INFO: MD5 file updated successfully."
 
 # Update Kitodo delivery metadata
+META_FILE="${kitodo_metadata_path}/${kitodo_processid}/meta.xml"
 if [[ -z "${META_FILE:-}" ]]; then
-    echo "ERROR: META_FILE is not defined."
+    echo "ERROR: META_FILE is not defined or not found"
     echo "Please check the Kitodo library configuration."
     exit 1
 fi
-
-
 echo "INFO: Updating Kitodo delivery metadata..."
-
 if ! xmlstarlet ed -L \
     -N kitodo="http://meta.kitodo.org/v1/" \
     -u "//kitodo:metadata[@name='delivery']/text()" \
     -v "${md5_datei_name}" \
     "${META_FILE}"; then
-
     echo "ERROR: Could not update delivery metadata."
     exit 1
 fi
+echo "INFO: Delivery metadata updated: ${md5_datei_name}"
 
-echo "INFO: Delivery metadata updated:"
-echo "${md5_datei_name}"
-
-
-# ============================================================
 # Finished
-# ============================================================
-
-echo "INFO: Digishare preparation completed successfully."
+echo "INFO: Transfer from digishare_upload to hdd_upload completed"
 echo "INFO: Files moved: ${transferred_count}"
 echo "INFO: MD5 entries added: ${md5_count}"
 echo "INFO: MD5 file: ${real_md5_datei}"
 echo "INFO: Kitodo delivery: ${md5_datei_name}"
-
+echo "INFO: Script finished successfully"
 exit 0
