@@ -116,7 +116,7 @@ done
 # PATH CONFIG
 ###############################################################################
 
-NETAPP_ROOT="/media/archive/public/www/hstam"
+NETAPP_ROOT="/media/cepheus/derivate/digitalisate-he/public"
 NETAPP_ARCH="${NETAPP_ROOT}/architekturzeichnungen"
 NETAPP_KARTEN="${NETAPP_ROOT}/karten"
 CEPH_ROOT="/media/cepheus/hstam"

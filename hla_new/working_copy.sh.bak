@@ -1,0 +1,431 @@
+#!/bin/bash
+# see lib_hla_kitodo for parameter
+
+# sourcing library
+if ! source "$(dirname "${0}")"/lib_hla_kitodo.sh; then
+    echo "Failed to include library file! please check."
+    exit 5
+fi
+
+# shellcheck disable=SC2154
+# variable referenced from library
+manifest_all_path="${base_path_ceph}/manifest/all/all_for_checking.md5"
+
+# shellcheck disable=SC2154
+# variable referenced from library
+relativ_path=$(grep "${full_sig_path}/" "${manifest_all_path}" | cut -d' ' -f3 | rev | cut -d'/' -f2- | rev | sort -u)
+final_ceph_path="${base_path_ceph}/${relativ_path}"
+
+if [[ "${relativ_path}" == "" ]]; then
+    # shellcheck disable=SC2154
+    # variable referenced from library
+    echo "Cant find path signature in manifest. Aborting."
+    exit 2
+fi
+
+if [[ ! -d "${final_ceph_path}" ]]; then
+    echo "Folder not found. Aborting."
+    exit 1
+fi
+
+# extract archive_name from full_sig_path
+old_archive_name=$(echo "${full_sig_path}" | awk -F'/' '{print $1}')
+
+# extract fond_name from full_sig_path
+old_fond_name=$(echo "${full_sig_path}" | awk -F'/' '{print $2}')
+
+# extract item_name from full_sig_path
+old_item_name=$(echo "${full_sig_path}" | awk -F'/' '{print $3}')
+
+# shellcheck disable=SC2154
+# variable referenced from library
+cd "${kitodo_metadata_path}/${kitodo_processid}/images/" || exit 1
+
+create_working_copy(){
+    echo "Creating working copy of (tiff image) files from ceph"
+    # shellcheck disable=SC2154
+    # variable referenced from library
+    if [ ! -d "${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_img_tiff_name}" ]; then
+        echo "Creating folder ${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_img_tiff_name}"
+        mkdir -v "${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_img_tiff_name}"
+    fi
+
+    echo  "Creating folder structure from full_sig_path"
+    if ! mkdir -pv "${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_img_tiff_name}/${full_sig_path}/"; then
+        echo "Error by creating folder structure. Aborting."
+        exit 1
+    fi
+
+    echo "Copying file(s) from ${final_ceph_path} to ${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_img_tiff_name}/${full_sig_path}/"
+    if rsync -tv --chmod=D2770,F0660 --chown=:hladigi "${final_ceph_path}/"* "${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_img_tiff_name}/${full_sig_path}/" && rsync -ctv --chmod=D2770,F0660 --chown=:hladigi "${final_ceph_path}/"* "${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_img_tiff_name}/${full_sig_path}/"; then
+        echo "Successfully copied file(s)"
+    else
+        echo "Error with rsync, please check the log lines before this message. Aborting."
+        exit 1
+    fi
+}
+
+checking_for_digi_team_required(){
+    if [ ! -d "${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_img_tiff_name}" ]; then
+        echo "Image folder not exist, everything should be deleted! Digi-Team approval required!"
+        exit 1
+    fi
+    # getting list of local files in tiff image folder, remove (tiff) folder name and sort
+    # revert order to only getting name after last slash (like basename), revert back and sort
+    local_file_list=$(find "${kitodo_img_tiff_name}" -type f | rev | cut -d'/' -f1 | rev | sort)
+    # testing if tiff image folder is empty
+    if [[ "${local_file_list}" == "" ]]; then
+        echo "Content of image folder should be deleted completely. Digi-Team approval required!"
+        exit 1
+    fi
+}
+
+find_and_delete(){
+    if ! find "${1:?}/" -type f -delete; then
+        exit 1
+    fi
+    if ! find "${1:?}/" -type d -empty -delete; then
+        exit 1
+    fi
+}
+
+write_line_if_not_exist(){
+    if [ ! -f "${2}" ]; then
+        echo "File not found, so line cant be existent. Writing line to file."
+        echo "${1}" >> "${2}"
+        return 0
+    fi
+    # check if line already present in file
+    grep -Fx "${1}" "${2}" >/dev/null
+    case "${?}" in
+        0)
+            # line was found
+            echo "Line already exists in file. Nothing to do."
+            ;;
+        1)
+            # line was not found
+            echo "Line not found in file so writing it"
+            echo "${1}" >> "${2}"
+            ;;
+        2)
+            # error occurred
+            echo "Error while searching for line with grep! Aborting."
+            exit 1
+            ;;
+    esac
+}
+
+sync_working_copy_back(){
+    delete_all="false"
+    echo "Testing if tiff image folder not exist or is empty"
+    if [ ! -d "${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_img_tiff_name}" ]; then
+        echo "Image folder not exist, deleting everything."
+        find_and_delete "$final_ceph_path" || exit 3
+        echo "All done."
+        delete_all="true"
+    fi
+
+    # getting list of local files in tiff image folder, remove (tiff) folder name and sort
+    # revert order to only getting name after last slash (like basename), revert back and sort
+    local_file_list=$(find "${kitodo_img_tiff_name}" -mindepth 3 -type f | rev | cut -d'/' -f1 | rev | sort)
+    # testing if tiff image folder is empty
+    if [[ "${local_file_list}" == "" ]]; then
+        find_and_delete "$final_ceph_path" || exit 3
+        echo "All done."
+        delete_all="true"
+    fi
+    # get all relevant lines from manifest
+    manifest_grep_output=$(grep "${full_sig_path}" "${manifest_all_path}")
+    if [[ "${manifest_grep_output}" == "" ]]; then
+        echo "Nothing found in manifest. Aborting"
+        exit 1
+    fi
+
+
+##### NEEDS CHECKING BEGIN! TODO
+    # checking how much local folder exist (was the fond merge?)
+    merge_file_name="zusammenfuehren.txt"
+    # get all local folders (which also indirectly represent the signature)
+    local_folder=$(find "${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_img_tiff_name}/" -mindepth 3 -maxdepth 3 -type d)
+    # count local folders
+    local_folder_count=$(echo "${local_folder}" | wc -l)
+    # set variable for local merge file
+    local_folder_merge_file="${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_img_tiff_name}/${merge_file_name}"
+
+    # check if local merge file exist or if the local folder count is greater than one
+    if [[ -s "${local_folder_merge_file}" ]] || [[ "${local_folder_count}" -gt 1 ]]; then
+        # check if local merge file exist
+        if [[ -s "${local_folder_merge_file}" ]]; then
+            echo "Local merging file found, using for merging following items together:"
+            cat "${local_folder_merge_file}"
+            # reading content of local merge file to variable for later usage
+            additional_item=$(cat "${local_folder_merge_file}")
+
+        # check if local folder count is greater than one (so there is more than one local "signature" folder)
+        elif [[ "${local_folder_count}" -gt 1 ]]; then
+            echo "More than one item folder. Merging the following items together:"
+            echo "${local_folder}"
+            # remove current full sig path from variable to known which additional folder(s) need to transferred and write it to variable for later usage
+            additional_item=$(echo "${local_folder}" | sed "\=${current_full_sig_path}=d")
+        fi
+
+        # iterate over the list of additional folders (or lines)
+        while read -r item
+        do
+            # check if the current item signature path exist and is accessible
+            if [[ -d "${base_path_ceph}/${item}" ]]; then
+                echo "copying (rsync) ${base_path_ceph}/${item}/* to ${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_img_tiff_name}/${full_sig_path}"
+                if rsync -tv --chmod=D2770,F0660 --chown=:hladigi "${base_path_ceph}/${item}/"* "${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_img_tiff_name}/${full_sig_path}/" && rsync -ctv --chmod=D2770,F0660 --chown=:hladigi "${base_path_ceph}/${item}/"* "${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_img_tiff_name}/${full_sig_path}/"; then
+                    echo "Successfully copied. Deleting source files from ceph."
+                    if rm "${base_path_ceph}/${item}/"* && rmdir --parents --ignore-fail-on-non-empty "${base_path_ceph}/${item}"; then
+                        echo "Successfully delete old item: ${item}"
+                    else
+                        echo "Error on deleting, please check! Aborting."
+                        exit 1
+                    fi
+                else
+                    echo "error by rsync, aborting."
+                    exit 1
+                fi
+            else
+                echo "Folder not found, please check! Aborting."
+                echo "Folder variable: ${base_path_ceph}/${item}"
+                exit 1
+            fi
+        done <<< "${additional_item}"
+    fi
+
+##### NEEDS CHECKING END! TODO
+
+    # check if folder structure changed (renaming archiv, fond, item...)
+    current_full_sig_path=$(find "${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_img_tiff_name}/" -mindepth 3 -maxdepth 3 -type d | rev | cut -d'/' -f1-3 | rev)
+
+    # extract archive_name from full_sig_path
+    current_archive_name=$(echo "${current_full_sig_path}" | awk -F'/' '{print $1}')
+
+    # extract fond_name from full_sig_path
+    current_fond_name=$(echo "${current_full_sig_path}" | awk -F'/' '{print $2}')
+
+    # extract item_name from full_sig_path
+    current_item_name=$(echo "${current_full_sig_path}" | awk -F'/' '{print $3}')
+
+    folder_changed="false"
+
+    if [[ "${old_archive_name}" != "${current_archive_name}" ]]; then
+        echo "Archive name changed!"
+        folder_changed="true"
+    fi
+
+    if [[ "${old_fond_name}" != "${current_fond_name}" ]]; then
+        echo "Fond name changed!"
+        folder_changed="true"
+    fi
+
+    if [[ "${old_item_name}" != "${current_item_name}" ]]; then
+        echo "Item name changed!"
+        folder_changed="true"
+    fi
+
+    if [[ "${folder_changed}" == "false" ]]; then
+        current_full_sig_path="${full_sig_path}"
+    else
+        current_full_sig_path="${current_archive_name}/${current_fond_name}/${current_item_name}"
+    fi
+
+    # disable shellcheck for using sed in this place. For better reading (and not escaping slashes)
+    # shellcheck disable=SC2001
+    new_relativ_path=$(echo "${relativ_path}" | sed "s=${full_sig_path}=${current_full_sig_path}=g")
+    new_final_ceph_path="${base_path_ceph}/${new_relativ_path}"
+
+    if [[ ! -d "${new_final_ceph_path}" ]] && [[ "${delete_all}" == "false" ]]; then
+        echo "New final_ceph_path was not found! Creating it."
+        mkdir -pv "${new_final_ceph_path}"
+    fi
+
+    # get all relevant filenames from manifest
+    manifest_filenames=$(echo "${manifest_grep_output}" | cut -d' ' -f3 | rev | cut -d'/' -f1 | rev)
+    # get lines which are not in both lists
+    unique_lines=$(comm -3 <(echo "${local_file_list}") <(echo "${manifest_filenames}" | sort))
+
+    changes="false"
+    local_checksum_filename="${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_processid}.md5"
+
+    # check if list is empty
+    if [[ "${delete_all}" == "false" ]]; then
+        if [[ "${unique_lines}" == "" ]]; then
+            echo "Filenames not changed."
+            echo "Testing if files changed"
+            # get all relevant checksums from manifest
+            manifest_checksums=$(echo "${manifest_grep_output}" | cut -d' ' -f1)
+            # combine two lists, use ; as seperator and replace this with two spaces (md5sum file specification)
+            manifest_filenames_and_checksums=$(paste -d ';' <(echo "${manifest_checksums}") <(echo "${manifest_filenames}") | sed 's/;/  /g')
+            while read -r line
+            do
+                cd "${kitodo_metadata_path}/${kitodo_processid}/images/${kitodo_img_tiff_name}/${current_full_sig_path}" || exit 1
+                if echo "${line}" | md5sum --check; then
+                    echo "Nothing changed, writing line to local checksum file"
+                    # extracting checksum
+                    checksum=$(echo "${line}" | cut -d' ' -f1)
+                    # extracting filename
+                    filename=$(echo "${line}" | cut -d' ' -f3)
+                    write_line_if_not_exist "${checksum}  ${new_relativ_path}/${filename}" "${local_checksum_filename}" || exit 1
+                    if [[ "${folder_changed}" == "true" ]]; then
+                        echo "Folder changed, uploading file to new folder"
+                    fi
+                else
+                    echo "Checksum changed. Generating new checksum and copying file"
+                    filename=$(echo "${line}" | cut -d' ' -f3)
+                    # generating new checksum
+                    checksum=$(md5sum "${filename}" | cut -d' ' -f1)
+                    # write checksum and filename to local checksum file
+                    write_line_if_not_exist "${checksum}  ${new_relativ_path}/${filename}" "${local_checksum_filename}" || exit 1
+                    if ! echo "${checksum}  ${filename}" | md5sum --check; then
+                        echo "Something is wrong with new created checksum... Please check ${new_relativ_path}/${filename} Aborting!"
+                        exit 1
+                    fi
+                    # remove old file
+                    # current_full_sig_path
+                    if ! rm -v "${final_ceph_path}/${filename}"; then
+                        echo "Error by deleting file ${final_ceph_path}/${filename}! Please check."
+                        exit 1
+                    fi
+                    # copy file back to ceph
+                    if rsync -tv --chmod=D2770,F0660 --chown=:hladigi "${filename}" "${new_final_ceph_path}/${filename}" && rsync -ctv --chmod=D2770,F0660 --chown=:hladigi "${filename}" "${new_final_ceph_path}/${filename}"; then
+                        echo "Successfully copied to ceph."
+                    else
+                        echo "Error by copying to ceph! Please check."
+                        echo "Source: ${filename} ; Destination: ${new_final_ceph_path}/${filename}"
+                        exit 1
+                    fi
+                    # set changes to true
+                    changes="true"
+                fi
+            done <<< "${manifest_filenames_and_checksums}"
+        else
+            echo "Filestructure changed! (More files, less files, filename changed,...) Generate new checksums for all files"
+            # set changes to true
+            changes="true"
+            while read -r line
+            do
+                # generating new checksum
+                checksum=$(md5sum "${kitodo_img_tiff_name}/${current_full_sig_path}/${line}" | cut -d' ' -f1)
+                # write checksum and filename to local checksum file
+                write_line_if_not_exist "${checksum}  ${new_relativ_path}/${line}" "${local_checksum_filename}" || exit 1
+                if ! echo "${checksum}  ${kitodo_img_tiff_name}/${current_full_sig_path}/${line}" | md5sum --check; then
+                    echo "Error with new generated checksum! Please check: ${new_relativ_path}/${line}"
+                    exit 1
+                fi
+            done <<< "${local_file_list}"
+            # append bak ending to old files
+            find_and_delete "$final_ceph_path" || exit 3
+            # sync all files to ceph
+            cd "${kitodo_metadata_path}/${kitodo_processid}/images/" || exit 1
+            if rsync -tv --chmod=D2770,F0660 --chown=:hladigi "${kitodo_img_tiff_name}/${current_full_sig_path}/"* "${new_final_ceph_path}" && rsync -ctv --chmod=D2770,F0660 --chown=:hladigi "${kitodo_img_tiff_name}/${current_full_sig_path}/"* "${new_final_ceph_path}"; then
+                echo "Successfully copied files to ceph."
+            else
+                echo "Error by copying new files to ceph, please check!"
+                exit 1
+            fi
+
+        fi
+    fi
+    cd "${kitodo_metadata_path}/${kitodo_processid}/images/" || exit 1
+    # check if folder changed but files not
+    if [[ "${folder_changed}" == "true" ]] && [[ "${changes}" == "false" ]] && [[ "${delete_all}" == "false" ]]; then
+        # move content (files) from old folder to new folder
+        echo "Only folder structure changed so moving files to new location"
+        if rsync -tv --chmod=D2770,F0660 --chown=:hladigi "${final_ceph_path}/"* "${new_final_ceph_path}/" && rsync -ctv --remove-source-files --chmod=D2770,F0660 --chown=:hladigi "${final_ceph_path}/"* "${new_final_ceph_path}/"; then
+            echo "Successfully moved files to new location."
+            echo "Trying to delete empty directories (errors if not empty) with parents: ${final_ceph_path}"
+            if ! rmdir --parents --verbose "${final_ceph_path}" ; then
+                echo "(Some) Deleting failed, check log before. Most likely the directories are not empty."
+                echo ""
+            fi
+        else
+            echo "Error by syncing files to new location! Please check."
+            exit 1
+        fi
+    fi
+
+    # check if at least one file changed or renamed (or folder structure changed)
+    if [[ "${changes}" == "true" ]] || [[ "${folder_changed}" == "true" ]] || [[ "${delete_all}" == "true" ]]; then
+        echo "Changes were found."
+        # find corresponding "old" checksum file in ceph
+        old_checksum_file_path=$(grep --files-with-matches "${full_sig_path}" "${base_path_ceph}/manifest/"*.md5)
+        if [ ! -f "${old_checksum_file_path}" ]; then
+            echo "No corresponding checksum file found.. aborting!"
+            exit 1
+        fi
+        # check if founded md5 checksum already exist in local checksum and is newer than version in ceph
+        local_old_checksum_file_path="${kitodo_metadata_path}/checksums/$(basename "${old_checksum_file_path}")"
+        if [ -f "${local_old_checksum_file_path}" ] && [ "${local_old_checksum_file_path}" -nt "${old_checksum_file_path}" ]; then
+            # using local checksum file
+            old_checksum_file_path="${local_old_checksum_file_path}"
+        fi
+        # remove lines by full_sig_path (with trailing slash)
+        sed "\=${full_sig_path}/=d" "${old_checksum_file_path}" >> "$(basename "${old_checksum_file_path}")"
+        # add local checksum file to end of original md5 checksum file
+        cat "${local_checksum_filename}" >> "$(basename "${old_checksum_file_path}")"
+        # disable shellcheck variable exported in library
+        # shellcheck disable=SC2154
+        # upload checksum file to manifest
+        if ! "$(dirname "${0}")"/upload_checksum_file_lib.sh "$(basename "${old_checksum_file_path}")" "${kitodo_processid}" "${kitodo_processtitle}" "${meta_delivery}"; then
+            echo "Error in upload script, please check!"
+            exit 1
+        fi
+        # copy temporary modified original checksum file to local checksums folder for faster later usage
+        if ! cp -v "$(basename "${old_checksum_file_path}")" "${kitodo_metadata_path}/checksums/"; then
+            echo "Error by copying checksum file. Aborting!"
+        fi
+        # remove temporary modified original checksum file
+        if ! rm -v "$(basename "${old_checksum_file_path}")"; then
+            echo "Error by removing uploaded checksum file. Aborting!"
+            exit 1
+        fi
+    fi
+    # remove local checksum copy
+    if ! rm -v "${local_checksum_filename}"; then
+        echo "Error by removing local checksum file. Aborting!"
+        exit 1
+    fi
+    # remove local (image) files in working directory
+    echo "Trying to delete all local files and directories in kitodo images folder"
+    if ! find "${kitodo_metadata_path}/${kitodo_processid}/images/" -mindepth 1 -type f -delete -print; then
+        echo "Error by deleting local files from working directory! Aborting."
+        exit 1
+    fi
+    # remove empty directories
+    if ! find "${kitodo_metadata_path}/${kitodo_processid}/images/" -mindepth 1 -empty -type d -delete -print; then
+        echo "Error by deleting empty directories! Aborting."
+        exit 1
+    fi
+}
+
+# checking which case to use (reading from kitodo_stepname)
+# shellcheck disable=SC2154
+# variable referenced from library
+case "${kitodo_stepname}" in
+
+    "Erzeugen_einer_Arbeitskopie")
+        echo "---------- Create working copy begin ----------"
+        create_working_copy || exit 1
+        echo "---------- Create working copy end ----------"
+        ;;
+    Automatische*)
+        echo "---------- Checking if approval is required begin ----------"
+        checking_for_digi_team_required || exit 3
+        echo "---------- Checking if approval is required end ----------"
+        ;;
+    "Arbeitskopie_synchronisieren")
+        echo "---------- syncing back begin ----------"
+        sync_working_copy_back || exit 2
+        echo "---------- syncing back end ----------"
+        ;;
+    *)
+        echo "Stepname not matching pattern... Aborting!"
+        exit 3
+        ;;
+esac
+
+# This should only be executed if no important error was occurring before
+echo "working_copy script executed successfully"

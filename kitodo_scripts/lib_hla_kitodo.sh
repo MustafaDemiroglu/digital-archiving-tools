@@ -12,6 +12,8 @@ base_path_hdd_ingest_ceph="${base_path_ceph}/ingest/hdd_upload"
 # shellcheck disable=SC2034
 # used external
 base_path_manifest="${base_path_ceph}/manifest"
+# shellcheck disable=SC2034
+# used external
 manifest_all="${base_path_ceph}/manifest/all/all_for_checking.md5"
 kitodo_base_path="/usr/local/kitodo"
 # shellcheck disable=SC2034
@@ -28,10 +30,10 @@ kitodo_img_thumb_name="thumbs"
 kitodo_img_tiff_name="tiff"
 # shellcheck disable=SC2034
 # used external
-netapp_path="/media/archive/public"
+netapp_path="/media/cepheus/derivate/digitalisate-he"
 # shellcheck disable=SC2034
 # used external
-additional_output_folder_netapp="www"
+additional_output_folder_netapp="public"
 
 # check if date command is installed
 if ! command -v date &> /dev/null

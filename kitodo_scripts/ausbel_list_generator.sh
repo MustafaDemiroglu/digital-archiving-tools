@@ -76,4 +76,3 @@ fi
 # Success Exit
 echo "list_generator finished successfully."
 exit 0
-	

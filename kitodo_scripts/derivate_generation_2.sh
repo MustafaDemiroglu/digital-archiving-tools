@@ -73,6 +73,11 @@ if [[ "${generate_derivate_exit_code}" -ne 0 ]]; then
         exit "${generate_derivate_exit_code}"
 fi
 
+if [[ "${generate_preview_exit_code}" -ne 0 ]]; then
+        echo "Error by preview generation!"
+        exit "${generate_derivate_exit_code}"
+fi
+
 rm "${generation_list_path}"
 rm "${generation_list_path_only_preview}"
 rmdir "${tmp_folder}"

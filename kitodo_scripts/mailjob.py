@@ -36,8 +36,8 @@ def get_recipient_for_haus(haus):
     if haus not in HAUS_MAIL_MAP:
         raise ValueError(f"Unknown HAUS: {haus}")
     return HAUS_MAIL_MAP[haus]
-   
-# Send Mail   
+
+# Send Mail
 def send_mail(haus, subject, body):
     try:
         mail_to = get_recipient_for_haus(haus)
@@ -54,7 +54,7 @@ def send_mail(haus, subject, body):
     msg["Auto-Submitted"] = "auto-generated"
     msg.set_content(body)
     all_recipients = [mail_to] + CC_RECIPIENTS
-    
+
     try:
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=30) as server:
             if USE_TLS:
