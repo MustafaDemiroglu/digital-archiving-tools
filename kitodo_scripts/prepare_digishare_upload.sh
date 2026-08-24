@@ -48,6 +48,7 @@ esac
 
 # Define source and target paths
 source_path="${base_path_digishare_upload}/${source_haus_dir}/${bestand}/${signatur}"
+source_bestand_path="${base_path_digishare_upload}/${source_haus_dir}/${bestand}"
 # Create upload folder name
 now_epoch=$(date +%s)
 upload_date=$(date -d "@${now_epoch}" '+%Y-%m-%d')
@@ -150,10 +151,18 @@ echo "INFO: ${transferred_count} file(s) moved successfully."
 # Remove empty source folders
 echo "INFO: Removing empty source folders..."
 if ! find "${source_path}" -depth -type d -empty -delete; then
-    echo "WARNING: Some empty source folders could not be removed."
+    echo "WARNING: Some empty source Signatur folder could not be removed."
 else
-    echo "INFO: Empty source folders removed."
+    echo "INFO: Empty source signatur folder removed."
+	# Check and remove bestand folder if it became empty
+    if ! find "${source_bestand_path}" -maxdepth 0 -type d -empty -delete; then
+        echo "WARNING: Empty source Bestand folder could not be removed."
+    else
+		echo "INFO: Empty source bestand folder removed."
+	fi
+    
 fi
+
 # Check MD5 file self and filename and create if it does not exist
 if [[ -z "${md5_datei_name}" ]]; then
     echo "ERROR: MD5 file name is not defined."
@@ -245,9 +254,11 @@ fi
 echo "INFO: Delivery metadata updated: ${md5_datei_name}"
 
 # Finished
-echo "INFO: Script finished successfully. Transfer from digishare_upload to hdd_upload completed."
+echo "INFO: Transfer from digishare_upload to hdd_upload completed."
 echo "INFO: Files moved: ${transferred_count}"
 echo "INFO: MD5 entries added: ${md5_count}"
 echo "INFO: MD5 file: ${real_md5_datei}"
 echo "INFO: Kitodo delivery: ${md5_datei_name}"
+echo "INFO: Script finished successfully."
+
 exit 0
