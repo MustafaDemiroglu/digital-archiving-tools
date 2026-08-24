@@ -151,12 +151,12 @@ echo "INFO: ${transferred_count} file(s) moved successfully."
 # Remove empty source folders
 echo "INFO: Removing empty source folders..."
 if ! find "${source_path}" -depth -type d -empty -delete; then
-    echo "WARNING: Some empty source Signatur folder could not be removed."
+    echo "WARNING: Source Signatur folder could not be removed. Check if it is empty"
 else
     echo "INFO: Empty source signatur folder removed."
 	# Check and remove bestand folder if it became empty
     if ! find "${source_bestand_path}" -maxdepth 0 -type d -empty -delete; then
-        echo "WARNING: Empty source Bestand folder could not be removed."
+        echo "WARNING: Source Bestand folder could not be removed. It is not empty."
     else
 		echo "INFO: Empty source bestand folder removed."
 	fi
