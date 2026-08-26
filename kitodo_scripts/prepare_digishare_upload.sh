@@ -160,7 +160,6 @@ else
     else
 		echo "INFO: Empty source bestand folder removed."
 	fi
-    
 fi
 
 # Check MD5 file self and filename and create if it does not exist
@@ -243,16 +242,41 @@ if [[ -z "${META_FILE:-}" ]]; then
     exit 1
 fi
 echo "INFO: Updating Kitodo delivery metadata..."
-if ! xmlstarlet ed -L \
-    -N kitodo="http://meta.kitodo.org/v1/" \
-    -u "//kitodo:metadata[@name='delivery']/text()" \
-    -v "${md5_datei_name}" \
-    "${META_FILE}"; then
-    echo "ERROR: Could not update delivery metadata."
-    exit 1
+# check delivery node in metadata
+delivery_exists=$(xmlstarlet sel -N kitodo="http://meta.kitodo.org/v1/" \
+    -t -v "count(//kitodo:metadata[@name='delivery'])" \
+    "${META_FILE}")
+if [[ "${delivery_exists}" -eq 0 ]]; then
+    # delivery node not exists. create a new node and attribute (in 2 moves)
+    echo "INFO: No existing delivery entry found. Creating a new one."
+    if ! xmlstarlet ed -L \
+        -N kitodo="http://meta.kitodo.org/v1/" \
+        -s "//kitodo:kitodo" -t elem -n "kitodo:metadata" -v "${md5_datei_name}" \
+        "${META_FILE}"; then
+        echo "ERROR: Could not create delivery metadata node."
+        exit 1
+    fi
+    if ! xmlstarlet ed -L \
+        -N kitodo="http://meta.kitodo.org/v1/" \
+        -i "(//kitodo:metadata[not(@name)])[last()]" -t attr -n "name" -v "delivery" \
+        "${META_FILE}"; then
+        echo "ERROR: Could not set 'name' attribute on new delivery metadata node."
+        exit 1
+    fi
+else
+    # delivery node exists already ->  just update
+    echo "INFO: Existing delivery entry found. Updating it."
+    if ! xmlstarlet ed -L \
+        -N kitodo="http://meta.kitodo.org/v1/" \
+        -u "//kitodo:metadata[@name='delivery']/text()" \
+        -v "${md5_datei_name}" \
+        "${META_FILE}"; then
+        echo "ERROR: Could not update delivery metadata."
+        exit 1
+    fi
 fi
 echo "INFO: Delivery metadata updated: ${md5_datei_name}"
-
+    
 # Finished
 echo "INFO: Transfer from digishare_upload to hdd_upload completed."
 echo "INFO: Files moved: ${transferred_count}"
