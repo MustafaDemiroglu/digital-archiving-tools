@@ -12,7 +12,7 @@ kitodo_processtitle="${3}"
 meta_delivery="${4}"
 
 # define secret gitlab api token. This token need FULL api access (read/write)
-gitlab_api_token="#####-#####-##############"
+# gitlab_api_token="#####-#####-##############"
 # define project url of gitlab manifest (hla only using one manifest, so hardcoded should be fine)
 gitlab_base_repo_project_url="https://gitlab.hrz.uni-marburg.de/api/v4/projects/777"
 
