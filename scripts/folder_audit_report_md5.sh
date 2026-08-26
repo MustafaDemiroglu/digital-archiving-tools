@@ -8,13 +8,13 @@
 # Purpose     : 
 #   This script performs an audit of the lowest-level folders
 #   inside a given directory structure. It automatically checks both
-#   `/media/cepheus` and `/media/archive/public/www` to see if the folders exist,
+#   `/media/cepheus` and `/media/cepheus/derivate/digitalisate-he/public` to see if the folders exist,
 #   and generates a CSV report with detailed metadata for comparison. You should execute in kitodo-pilot vm.
 #
 # What it does:
 #   1. Finds all lowest-level (leaf) folders inside the working directory.
 #   2. For each folder, collects metadata (creation date, file count, file types, file creation dates).
-#   3. Checks whether the same folder exists in both `/media/cepheus or /media/cepheus/secure` and `/media/archive/public/www`.
+#   3. Checks whether the same folder exists in both `/media/cepheus or /media/cepheus/secure` and `/media/cepheus/derivate/digitalisate-he/public`.
 #   4. Records detailed status for each location and adds an evaluation column with explanations about potential differences.
 #
 # Output:
@@ -164,7 +164,7 @@ evaluate() {
   # --- CASE 2: Cepheus does not exist ---
   if [[ "$status_cepheus" == "not_exist" ]]; then
     if [[ "$status_nutzung" == "not_exist" ]]; then
-      echo "Uploadbereit. weder in Cepheus noch in NetApp vorhanden"
+      echo "Uploadbereit. weder in Cepheus noch in Derivate vorhanden"
     else
       echo "Pruefen. Ordner nur in NutzungDigis vorhanden. vielleicht manuell erstellt"
     fi
@@ -198,7 +198,7 @@ evaluate() {
     if [[ "$status_nutzung" == "not_exist" ]]; then
       echo "Pruefen. Ordner in Cepheus vorhanden aber Digitalisate sind nicht identisch. es gibt keine Nutzungskopie; ${md5_note}"
     else
-      echo "Pruefen. Digitalisate im Cepheus und NutzungDigis in NetApp vorhanden. Unterschiede zwischen Cepheus und neuer Lieferung (Dateien/Typen weichen ab). Entscheidung erforderlich; ${md5_note}"
+      echo "Pruefen. Digitalisate im Cepheus und NutzungDigis in Derivate vorhanden. Unterschiede zwischen Cepheus und neuer Lieferung (Dateien/Typen weichen ab). Entscheidung erforderlich; ${md5_note}"
     fi
   else
     # Metadata identical (without dates)
@@ -226,7 +226,7 @@ processed=0
 
 # Reserve 5 lines (one for each message)
 echo "Check process started"
-echo "Checking if folders already exist in Cepheus or NetApp"
+echo "Checking if folders already exist in Cepheus or Derivate"
 echo "Collecting metadata & evaluating differences"
 echo "Status: running..."
 echo "Progress: 0%"
@@ -272,7 +272,7 @@ for folder in "${folders[@]}"; do
   esac
 
   # Metadata Nutzung
-  full_path_nutzung="/media/archive/public/www/$folder_clean"
+  full_path_nutzung="/media/cepheus/derivate/digitalisate-he/public/$folder_clean"
   if [[ -d "$full_path_nutzung" ]]; then
     status_nutzung="exist"
     meta_nutzung=$(get_metadata "$full_path_nutzung")

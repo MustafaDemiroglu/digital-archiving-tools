@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-###############################################################################
+########################
 # Script Name: move_folder_by_csv.sh 
 # Version: 4.0
 # Author: Mustafa Demiroglu
@@ -25,7 +25,7 @@
 #
 # CSV format:
 #   Each line contains ONE absolute or relative folder path.
-###############################################################################
+#####################
 
 # Colors for readability
 GREEN='\033[0;32m'
@@ -163,9 +163,9 @@ process_folder() {
   fi
 
   # --------- Begin: Custom destination path logic -----------
-  # Base roots substring logic: if path includes "/media/archive/public/www" or "/media/cepheus", will be deleted.
+  # Base roots substring logic: if path includes "/media/cepheus/derivate/digitalisate-he/public" or "/media/cepheus", will be deleted.
   local abs_base=""
-  local base1="/media/archive/public/www"
+  local base1="/media/cepheus/derivate/digitalisate-he/public"
   local base2="/media/cepheus"
   if [[ "$folder" == "$base1"* ]]; then
     abs_base="${folder:${#base1}}"

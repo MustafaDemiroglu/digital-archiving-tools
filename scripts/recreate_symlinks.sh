@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name	: recreate_symlinks.sh
-# Version		: 2.1.1
+# Version		: 2.1.2
 # Author		: Mustafa Demiroglu
 # Organisation	: HlaDigiTeam
-# Date			: 26.03.2026
+# Date			: 26.08.2026
 # Licnce		: MIT
 #
 # IMPORTANT:
@@ -17,7 +17,7 @@
 #   while maintaining symlinks for the architekturzeichnungen.
 #
 # Why relative symlinks?
-#   kitodo VM : /media/archive/public/www/hstam/...
+#   kitodo VM : /media/cepheus/derivate/digitalisate-he/public/hstam/...
 #   digiserver: /archive/www/hstam/...
 #   Absolute symlinks break when mount prefix differs between VMs.
 #   Relative symlinks (e.g. ../../karten/Y/file.tif) are prefix-independent
@@ -83,7 +83,7 @@ done
 # Add further candidate paths here if new VMs are introduced.
 HSTAM_ROOT=""
 for candidate in \
-    "/media/archive/public/www/hstam" \
+    "/media/cepheus/derivate/digitalisate-he/public/hstam" \
     "/archive/www/hstam"; do
     if [[ -d "$candidate" ]]; then
         HSTAM_ROOT="$candidate"
@@ -93,7 +93,7 @@ done
 
 if [[ -z "$HSTAM_ROOT" ]]; then
     echo "ERROR: Cannot locate hstam root directory."
-    echo "  Tried: /media/archive/public/www/hstam"
+    echo "  Tried: /media/cepheus/derivate/digitalisate-he/public/hstam"
     echo "         /archive/www/hstam"
     echo "  Add the correct path to the candidate list in the PATH CONFIG section."
     exit 1
@@ -142,8 +142,8 @@ exec_cmd() {
 # regardless of the absolute mount prefix of the hstam share.
 #
 # Example:
-#   link  : /media/archive/public/www/hstam/architekturzeichnungen/A123/file.tif
-#   target: /media/archive/public/www/hstam/karten/K456/file.tif
+#   link  : /media/cepheus/derivate/digitalisate-he/public/hstam/architekturzeichnungen/A123/file.tif
+#   target: /media/cepheus/derivate/digitalisate-he/public/hstam/karten/K456/file.tif
 #   stored: ../../karten/K456/file.tif   (relative from link directory)
 ###############################################################################
 

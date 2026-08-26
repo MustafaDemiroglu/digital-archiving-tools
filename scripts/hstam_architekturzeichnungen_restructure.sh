@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Script Name	: hstam_architekturzeichnungen_restructure.sh
-# Version		: 6.3.5
+# Version		: 6.3.6
 # Author		: Mustafa Demiroglu
 # Organisation	: HlaDigiTeam
-# Date			: 28.04.2026
+# Date			: 26.08.2026
 # Licence		: MIT
 #
 # VERY IMPORTANT:
@@ -16,8 +16,8 @@
 #   by renaming signature directories and moving files between old and new directory structures.
 #   It processes a CSV file containing old and new signature paths, validates all paths, creates 
 #   new directory structures, moves files between storage systems (Cepheus and 
-#   NetApp), recreates symlinks, and cleans up empty directories .
-#	It handles both Cepheus (long-term storage) and NetApp (access storage) 
+#   Derivate), recreates symlinks, and cleans up empty directories .
+#	It handles both Cepheus (long-term storage) and Derivate (access storage) 
 #   locations while maintaining symlinks for the architekturzeichnungen.
 #
 #   The script supports heterogeneous data states:
@@ -36,9 +36,9 @@
 # How it works:
 #   1. Reads a CSV file with old and new signature names
 #   2. Validates all paths and directories exist and prepares target structures
-#   3. Creates new directory structure in both Cepheus and NetApp
+#   3. Creates new directory structure in both Cepheus and Derivate
 #   4. Moves files from old to new locations in Cepheus storage
-#   5. Moves files and thumbnails in NetApp storage
+#   5. Moves files and thumbnails in Derivate storage
 #   6. Generates a preview.jpg per target signature by:
 #      - selecting the first natural-sorted image file
 #      - generating a 100x100 px JPEG preview (96 DPI, 24-bit)
@@ -116,9 +116,9 @@ done
 # PATH CONFIG
 ###############################################################################
 
-NETAPP_ROOT="/media/archive/public/www/hstam"
-NETAPP_ARCH="${NETAPP_ROOT}/architekturzeichnungen"
-NETAPP_KARTEN="${NETAPP_ROOT}/karten"
+DERIVATE_ROOT="/media/cepheus/derivate/digitalisate-he/public/hstam"
+DERIVATE_ARCH="${DERIVATE_ROOT}/architekturzeichnungen"
+DERIVATE_KARTEN="${DERIVATE_ROOT}/karten"
 CEPH_ROOT="/media/cepheus/hstam"
 CEPH_KARTEN="${CEPH_ROOT}/karten"
 
@@ -189,7 +189,7 @@ preflight_checks() {
     progress "Running pre-flight checks..."
 
     # Check if paths exist
-    for path in "$NETAPP_ROOT" "$NETAPP_ARCH" "$NETAPP_KARTEN" "$CEPH_ROOT" "$CEPH_KARTEN"; do
+    for path in "$DERIVATE_ROOT" "$DERIVATE_ARCH" "$DERIVATE_KARTEN" "$CEPH_ROOT" "$CEPH_KARTEN"; do
         if [[ ! -d "$path" ]]; then
             echo "ERROR: Required path does not exist: $path"
             exit 1
@@ -198,7 +198,7 @@ preflight_checks() {
 
     # Check write permissions
     if [[ "$DRY_RUN" -eq 0 ]]; then
-        for path in "$NETAPP_ARCH" "$NETAPP_KARTEN" "$CEPH_KARTEN"; do
+        for path in "$DERIVATE_ARCH" "$DERIVATE_KARTEN" "$CEPH_KARTEN"; do
             if [[ ! -w "$path" ]]; then
                 echo "ERROR: No write permission: $path"
                 exit 1
@@ -458,11 +458,11 @@ process_validate_paths() {
             echo "$a;$o;$n;old_path not found in cepheus" >> "$CSV_MANUAL"
             invalid=1
             log WARN "Invalid: $a - old_path not found in cepheus"
-        elif [[ ! -d "${NETAPP_KARTEN}/${o}" ]]; then
-            echo "$a;$o;$n;old_path not found in netapp" >> "$CSV_MANUAL"
+        elif [[ ! -d "${DERIVATE_KARTEN}/${o}" ]]; then
+            echo "$a;$o;$n;old_path not found in derivate" >> "$CSV_MANUAL"
             invalid=1
-            log WARN "Invalid: $a - old_path not found in netapp"
-        elif [[ -d "${CEPH_KARTEN}/${n}" || -d "${NETAPP_KARTEN}/${n}" ]]; then
+            log WARN "Invalid: $a - old_path not found in Derivate"
+        elif [[ -d "${CEPH_KARTEN}/${n}" || -d "${DERIVATE_KARTEN}/${n}" ]]; then
             echo "$a;$o;$n;new_path already exists" >> "$CSV_MANUAL"
             invalid=1
             log WARN "Invalid: $a - new_path already exists"
@@ -507,20 +507,20 @@ process_create_dirs() {
             }
         fi
 
-        if [[ $failed -eq 0 ]] && ! exec_cmd mkdir -p "${NETAPP_KARTEN}/${n}/thumbs"; then
+        if [[ $failed -eq 0 ]] && ! exec_cmd mkdir -p "${DERIVATE_KARTEN}/${n}/thumbs"; then
             [[ "$DRY_RUN" -eq 0 ]] && { 
-                echo "$a;$o;$n;cannot create netapp dir" >> "$CSV_MANUAL"
-                log ERROR "Failed to create netapp dir: ${NETAPP_KARTEN}/${n}/thumbs"
+                echo "$a;$o;$n;cannot create Derivate dir" >> "$CSV_MANUAL"
+                log ERROR "Failed to create Derivate dir: ${DERIVATE_KARTEN}/${n}/thumbs"
                 failed=1
                 count_failed=$((count_failed + 1))
             }
         fi
 		
-		if [[ ! -d "${NETAPP_ARCH}/${a}" ]]; then
-            if [[ $failed -eq 0 ]] && ! exec_cmd mkdir -p "${NETAPP_ARCH}/${a}/thumbs"; then
+		if [[ ! -d "${DERIVATE_ARCH}/${a}" ]]; then
+            if [[ $failed -eq 0 ]] && ! exec_cmd mkdir -p "${DERIVATE_ARCH}/${a}/thumbs"; then
 				[[ "$DRY_RUN" -eq 0 ]] && { 
 					echo "$a;$o;$n;cannot create architekturzeichnung dir" >> "$CSV_MANUAL"
-					log ERROR "Failed to create architekturzeichnung dir: ${NETAPP_ARCH}/${a}/thumbs"
+					log ERROR "Failed to create architekturzeichnung dir: ${DERIVATE_ARCH}/${a}/thumbs"
 					failed=1
 					count_failed=$((count_failed + 1))
 				}
@@ -553,7 +553,7 @@ process_move_cepheus() {
     while IFS=';' read -r a o n || [[ -n "${a:-}" ]]; do
         [[ "$a" == "architekturzeichnung" ]] && continue
 
-        local src_arch="${NETAPP_ARCH}/${a}"
+        local src_arch="${DERIVATE_ARCH}/${a}"
         local src_old="${CEPH_KARTEN}/${o}"
         local dst_new="${CEPH_KARTEN}/${n}"
 		local arch_has_files=0
@@ -619,19 +619,19 @@ process_move_cepheus() {
 }
 
 ###############################################################################
-# PROCESS 5: NETAPP MOVE
+# PROCESS 5: DERIVATE MOVE
 ###############################################################################
-process_move_netapp() {
-    progress "Process 5: Move files in NetApp"
+process_move_derivate() {
+    progress "Process 5: Move files in Derivate"
 
     local count_moved=0 count_thumbs=0 count_preview=0
 
     while IFS=';' read -r a o n || [[ -n "${a:-}" ]]; do
         [[ "$a" == "architekturzeichnung" ]] && continue
 
-        local src_arch="${NETAPP_ARCH}/${a}"
-        local src_old="${NETAPP_KARTEN}/${o}"
-        local dst_new="${NETAPP_KARTEN}/${n}"
+        local src_arch="${DERIVATE_ARCH}/${a}"
+        local src_old="${DERIVATE_KARTEN}/${o}"
+        local dst_new="${DERIVATE_KARTEN}/${n}"
 		local arch_has_files=0
 
 		shopt -s nullglob
@@ -751,8 +751,8 @@ process_move_netapp() {
 
     done < "$CSV_PROCESS"
 
-    progress "NetApp move finished: $count_moved files, $count_thumbs thumbs moved, $count_preview preview created"
-    log SUCCESS "NetApp move: $count_moved files, $count_thumbs thumbs moved, $count_preview preview created"
+    progress "Derivate move finished: $count_moved files, $count_thumbs thumbs moved, $count_preview preview created"
+    log SUCCESS "Derivate move: $count_moved files, $count_thumbs thumbs moved, $count_preview preview created"
 }
 
 ###############################################################################
@@ -791,7 +791,7 @@ process_cleanup_dirs() {
             fi
         done
 		
-		for p in "${NETAPP_KARTEN}/${o}/thumbs" "${NETAPP_KARTEN}/${o}"; do
+		for p in "${DERIVATE_KARTEN}/${o}/thumbs" "${DERIVATE_KARTEN}/${o}"; do
             if [[ -d "$p" ]]; then
                 if [[ "$DRY_RUN" -eq 1 ]]; then
                     log INFO "[DRY-RUN] would check and possibly delete: $p"
@@ -833,8 +833,8 @@ process_symlinks() {
     while IFS=';' read -r a _ n; do
         [[ "$a" == "architekturzeichnung" ]] && continue
 
-        local target="${NETAPP_KARTEN}/${n}"
-        local linkdir="${NETAPP_ARCH}/${a}"
+        local target="${DERIVATE_KARTEN}/${n}"
+        local linkdir="${DERIVATE_ARCH}/${a}"
 		
 		if [[ ! -d "$target" ]]; then
             log ERROR "Target directory does not exist: $target"
@@ -869,7 +869,7 @@ process_symlinks() {
         # Create new RELATIVE symlinks for main files
         for f in "$target"/*; do
             [[ ! -f "$f" ]] && continue
-            local abs_target="${NETAPP_KARTEN}/${n}/$(basename "$f")"
+            local abs_target="${DERIVATE_KARTEN}/${n}/$(basename "$f")"
             local link_name="$linkdir/$(basename "$f")"
             make_relative_symlink "$link_name" "$abs_target" && count_links=$((count_links + 1))
         done
@@ -878,7 +878,7 @@ process_symlinks() {
         if [[ -d "$target/thumbs" ]]; then
             for f in "$target/thumbs"/*; do
                 [[ ! -f "$f" ]] && continue
-                local abs_target="${NETAPP_KARTEN}/${n}/thumbs/$(basename "$f")"
+                local abs_target="${DERIVATE_KARTEN}/${n}/thumbs/$(basename "$f")"
                 local link_name="$linkdir/thumbs/$(basename "$f")"
                 make_relative_symlink "$link_name" "$abs_target" && count_links=$((count_links + 1))
             done
@@ -1053,7 +1053,7 @@ main() {
     process_validate_paths
     process_create_dirs
     process_move_cepheus
-    process_move_netapp
+    process_move_derivate
     process_cleanup_dirs
     process_symlinks
 	process_generate_md5

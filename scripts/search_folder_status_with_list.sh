@@ -19,15 +19,15 @@ trim() {
 # Step 1: Ask user for base path
 echo "Please choose the base directory for the search:"
 PS3="Enter the number of your choice: "
-options=("/media/cepheus" "/media/archive/public/www" "Custom path")
+options=("/media/cepheus" "/media/cepheus/derivate/digitalisate-he/public" "Custom path")
 select opt in "${options[@]}"; do
   case $opt in
     "/media/cepheus")
       base_path="/media/cepheus"
       break
       ;;
-    "/media/archive/public/www")
-      base_path="/media/archive/public/www"
+    "/media/cepheus/derivate/digitalisate-he/public")
+      base_path="/media/cepheus/derivate/digitalisate-he/public"
       break
       ;;
     "Custom path")

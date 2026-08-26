@@ -1,26 +1,26 @@
 #!/bin/bash
 
 ###############################################################################
-# Script Name: find_placeholder_netapp.sh
+# Script Name: find_placeholder_derivate.sh
 #
 # Description:
 # This script searches for possible placeholder images in archive folders.
 # A file is considered a placeholder if:
-#   - It is the ONLY file inside a signature folder (on NetApp)
+#   - It is the ONLY file inside a signature folder (on Derivate)
 #   - Its size is smaller than 300 KB
 #   - AND comparison with Cepheus shows:
 #         * Folder does NOT exist on Cepheus, OR
 #         * Folder exists but contains MORE than one file
 #
 # The script DOES NOT modify or delete anything. It only reads files.
-# Result is written to: placeholders_in_netapp.csv
+# Result is written to: placeholders_in_derivate.csv
 #
 # Thumbs folders are ignored.
 ###############################################################################
 
-OUTPUT_FILE="placeholders_in_netapp.csv"
+OUTPUT_FILE="placeholders_in_derivate.csv"
 SIZE_LIMIT=307200   # 300 KB in bytes
-NETAPP_BASE="/media/archive/public/www"
+DERIVATE_BASE="/media/cepheus/derivate/digitalisate-he/public"
 CEPHEUS_BASE="/media/cepheus"
 
 echo "Path,Filename,Size(Bytes)" > "$OUTPUT_FILE"
@@ -53,14 +53,14 @@ find "$BASE_PATH" -type d ! -name "thumbs" | while read -r dir; do
     mapfile -t files < <(find "$dir" -maxdepth 1 -type f)
     file_count=${#files[@]}
 
-    # We only care if there is exactly ONE file in Signatur under www
+    # We only care if there is exactly ONE file in Signatur under public
     if [ "$file_count" -eq 1 ]; then
         file="${files[0]}"
         size=$(stat -c%s "$file" 2>/dev/null)
 
         if [ -n "$size" ] && [ "$size" -lt "$SIZE_LIMIT" ]; then
             # --- Build corresponding Cepheus path ---
-            rel_path="${dir#$NETAPP_BASE/}"
+            rel_path="${dir#$DERIVATE_BASE/}"
             cepheus_dir="$CEPHEUS_BASE/$rel_path"
 
             is_placeholder=false

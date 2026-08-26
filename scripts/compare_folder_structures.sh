@@ -26,11 +26,11 @@
 #   - lost_compare_<DATE>.csv   : CSV file with missing directories
 #
 # Example Usage:
-#   ./compare_folder_structures.sh /media/archive/public/www /media/cepheus
-#   ./compare_folder_structures.sh www cepheus -e thumbs
-#   ./compare_folder_structures.sh www cepheus -s hstam,hstad,hhstaw
-#   ./compare_folder_structures.sh www cepheus -e thumbs -s hstam,hstad
-#   ./compare_folder_structures.sh www cepheus -e thumbs,cache,tmp
+#   ./compare_folder_structures.sh /media/cepheus/derivate/digitalisate-he/public /media/cepheus
+#   ./compare_folder_structures.sh public cepheus -e thumbs
+#   ./compare_folder_structures.sh public cepheus -s hstam,hstad,hhstaw
+#   ./compare_folder_structures.sh public cepheus -e thumbs -s hstam,hstad
+#   ./compare_folder_structures.sh public cepheus -e thumbs,cache,tmp
 #
 ###############################################################################
 
